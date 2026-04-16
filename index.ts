@@ -212,8 +212,7 @@ export default definePluginEntry({
             const baseUrl = (baseUrlRaw ?? AXONHUB_DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
 
             // 2. Resolve API key: check env var first, then prompt
-            const env = ctx.env ?? process.env;
-            const envApiKey = env[AXONHUB_API_KEY_ENV_VAR]?.trim();
+            const envApiKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
             let apiKey: string;
             if (envApiKey) {
               const useEnv = await ctx.prompter.confirm({
