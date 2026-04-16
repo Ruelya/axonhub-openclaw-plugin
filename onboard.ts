@@ -8,6 +8,7 @@ const AXONHUB_API_PATH = "/v1";
 export function applyAxonhubConfig(
   config: OpenClawConfig,
   baseUrl?: string,
+  apiKey?: string,
 ): OpenClawConfig {
   let models = { ...config.models };
   let providers = { ...models.providers ?? {} };
@@ -20,19 +21,30 @@ export function applyAxonhubConfig(
     : axonhubProvider.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
   axonhubProvider.baseUrl = resolvedBaseUrl;
 
+  if (apiKey) {
+    axonhubProvider.apiKey = apiKey;
+  }
+
   providers = { ...providers, [AXONHUB_PROVIDER_ID]: axonhubProvider };
   models = { ...models, providers };
 
   return { ...config, models };
 }
 
-export function resolveAxonhubConfigBaseUrl(config: OpenClawConfig): string | undefined {
+export function resolveAxonhubConfigBaseUrl(config: OpenClawConfig | undefined): string | undefined {
+  if (!config) return undefined;
   const provider = config.models?.providers?.[AXONHUB_PROVIDER_ID];
-  if (!provider || typeof provider !== "object") {
-    return undefined;
-  }
+  if (!provider || typeof provider !== "object") return undefined;
   const baseUrl = (provider as Record<string, unknown>).baseUrl;
   return typeof baseUrl === "string" ? baseUrl : undefined;
+}
+
+export function resolveAxonhubConfigApiKey(config: OpenClawConfig | undefined): string | undefined {
+  if (!config) return undefined;
+  const provider = config.models?.providers?.[AXONHUB_PROVIDER_ID];
+  if (!provider || typeof provider !== "object") return undefined;
+  const apiKey = (provider as Record<string, unknown>).apiKey;
+  return typeof apiKey === "string" ? apiKey : undefined;
 }
 
 export { AXONHUB_DEFAULT_BASE_URL, AXONHUB_API_PATH };

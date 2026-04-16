@@ -15,26 +15,82 @@ import {
   buildProviderReplayFamilyHooks,
   DEFAULT_CONTEXT_TOKENS,
 } from "openclaw/plugin-sdk/provider-model-shared";
-import { buildAxonhubProvider, resolveAxonhubModelCapabilities } from "./provider-catalog.js";
 import {
   applyAxonhubConfig,
   AXONHUB_DEFAULT_MODEL_REF,
   AXONHUB_DEFAULT_BASE_URL,
   AXONHUB_API_PATH,
   resolveAxonhubConfigBaseUrl,
+  resolveAxonhubConfigApiKey,
 } from "./onboard.js";
 
 const PROVIDER_ID = "axonhub";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
 const AXONHUB_API_KEY_ENV_VAR = "AXONHUB_API_KEY";
 const AXONHUB_DEFAULT_CONTEXT_WINDOW = 200000;
+const AXONHUB_DEFAULT_COST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+};
+
+// --- AxonHub API types for /v1/models?include=... response ---
+
+type AxonhubCapabilities = {
+  vision?: boolean;
+  tool_call?: boolean;
+  reasoning?: boolean;
+};
+
+type AxonhubPricing = {
+  input?: number;
+  output?: number;
+  cache_read?: number;
+  cache_write?: number;
+  unit?: string;
+  currency?: string;
+};
+
+type AxonhubModelEntry = {
+  id?: string;
+  object?: string;
+  created?: number;
+  owned_by?: string;
+  name?: string;
+  description?: string;
+  context_length?: number;
+  max_output_tokens?: number;
+  capabilities?: AxonhubCapabilities;
+  pricing?: AxonhubPricing;
+  type?: string;
+  icon?: string;
+};
+
+type AxonhubModelsResponse = {
+  object?: string;
+  data?: AxonhubModelEntry[];
+};
+
+// --- Model types ---
 
 type DiscoveredModel = {
   id: string;
-  name?: string;
+  name: string;
   contextWindow?: number;
-  reasoning?: boolean;
+  maxTokens?: number;
+  reasoning: boolean;
+  vision: boolean;
+  input: Array<"text" | "image">;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
 };
+
+// --- AxonHub API fetch ---
 
 async function fetchAxonhubModels(params: {
   baseUrl: string;
@@ -42,7 +98,7 @@ async function fetchAxonhubModels(params: {
   timeoutMs?: number;
 }): Promise<DiscoveredModel[]> {
   const baseUrl = params.baseUrl.replace(/\/+$/, "");
-  const url = `${baseUrl}/models`;
+  const url = `${baseUrl}/models?include=name,capabilities,context_length,max_output_tokens,pricing,type`;
   try {
     const response = await fetch(url, {
       headers: {
@@ -53,18 +109,37 @@ async function fetchAxonhubModels(params: {
     if (!response.ok) {
       return [];
     }
-    const data = await response.json() as { data?: Array<{ id?: string }> };
+    const data = (await response.json()) as AxonhubModelsResponse;
     const models = Array.isArray(data.data) ? data.data : [];
     return models
-      .map((m) => {
+      .map((m): DiscoveredModel | null => {
         const id = typeof m.id === "string" ? m.id.trim() : "";
         if (!id) return null;
+        // Only include chat-type models
+        if (m.type && m.type !== "chat") return null;
+
+        const hasVision = m.capabilities?.vision === true;
         return {
           id,
-          name: id,
-          contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
-          reasoning: /o1|o3|o4|r1|reasoning|think|reason|deepseek-r/i.test(id),
-        } satisfies DiscoveredModel;
+          name: m.name?.trim() || id,
+          contextWindow:
+            typeof m.context_length === "number" && m.context_length > 0
+              ? m.context_length
+              : undefined,
+          maxTokens:
+            typeof m.max_output_tokens === "number" && m.max_output_tokens > 0
+              ? m.max_output_tokens
+              : undefined,
+          reasoning: m.capabilities?.reasoning === true,
+          vision: hasVision,
+          input: hasVision ? ["text", "image"] : ["text"],
+          cost: {
+            input: m.pricing?.input ?? 0,
+            output: m.pricing?.output ?? 0,
+            cacheRead: m.pricing?.cache_read ?? 0,
+            cacheWrite: m.pricing?.cache_write ?? 0,
+          },
+        };
       })
       .filter((m): m is DiscoveredModel => m !== null);
   } catch {
@@ -72,22 +147,21 @@ async function fetchAxonhubModels(params: {
   }
 }
 
-function buildFallbackCatalogEntries() {
-  const provider = buildAxonhubProvider();
-  return (provider.models ?? []).map((model) => ({
-    provider: PROVIDER_ID,
-    id: model.id,
-    name: model.name ?? model.id,
-    contextWindow: model.contextWindow,
-    reasoning: model.reasoning,
-    input: model.input,
-  }));
+// --- Resolve API key from context (env + config, no credential store) ---
+
+function resolveApiKeyForCatalog(
+  config: OpenClawConfig | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): string | undefined {
+  // 1. Check environment variable
+  const envKey = env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
+  if (envKey) return envKey;
+
+  // 2. Check config (stored during auth flow)
+  return resolveAxonhubConfigApiKey(config);
 }
 
-function resolveAxonhubBaseUrlForCatalog(ctx: ProviderCatalogContext | ProviderAugmentModelCatalogContext): string {
-  const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
-  return configuredBaseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-}
+// --- Plugin entry ---
 
 export default definePluginEntry({
   id: PROVIDER_ID,
@@ -101,19 +175,18 @@ export default definePluginEntry({
     function buildDynamicAxonhubModel(
       ctx: ProviderResolveDynamicModelContext,
     ): ProviderRuntimeModel {
-      const capabilities = resolveAxonhubModelCapabilities(ctx.modelId);
-      const baseUrl = ctx.baseUrl ?? AXONHUB_DEFAULT_BASE_URL;
+      const baseUrl = ctx.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
       return {
         id: ctx.modelId,
-        name: capabilities?.name ?? ctx.modelId,
+        name: ctx.modelId,
         api: "openai-completions",
         provider: PROVIDER_ID,
-        baseUrl: `${baseUrl}${AXONHUB_API_PATH}`,
-        reasoning: capabilities?.reasoning ?? false,
-        input: capabilities?.input ?? ["text"],
-        cost: capabilities?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: capabilities?.contextWindow ?? DEFAULT_CONTEXT_TOKENS,
-        maxTokens: capabilities?.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+        baseUrl,
+        reasoning: false,
+        input: ["text"],
+        cost: { ...AXONHUB_DEFAULT_COST },
+        contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
+        maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
       };
     }
 
@@ -147,15 +220,17 @@ export default definePluginEntry({
                 message: `Use existing ${AXONHUB_API_KEY_ENV_VAR} from environment?`,
                 initialValue: true,
               });
-              apiKey = useEnv ? envApiKey : (await ctx.prompter.text({
-                message: "Enter your AxonHub API key",
-                placeholder: "sk-...",
-                validate: (value) => (value?.trim() ? undefined : "Required"),
-              }))?.trim() ?? "";
+              apiKey = useEnv
+                ? envApiKey
+                : ((await ctx.prompter.text({
+                    message: "Enter your AxonHub API key",
+                    placeholder: "ah-...",
+                    validate: (value) => (value?.trim() ? undefined : "Required"),
+                  }))?.trim() ?? "");
             } else {
               const apiKeyRaw = await ctx.prompter.text({
                 message: "Enter your AxonHub API key",
-                placeholder: "sk-...",
+                placeholder: "ah-...",
                 validate: (value) => (value?.trim() ? undefined : "Required"),
               });
               apiKey = normalizeApiKeyInput(apiKeyRaw?.trim() ?? "");
@@ -165,15 +240,35 @@ export default definePluginEntry({
               throw new Error("Missing API key input for AxonHub.");
             }
 
-            // 3. Build result
+            // 3. Try to discover models from the AxonHub instance
+            const apiBaseUrl = `${baseUrl}${AXONHUB_API_PATH}`;
+            const discovered = await fetchAxonhubModels({ baseUrl: apiBaseUrl, apiKey });
+
+            // Pick a good default model: prefer known models, fallback to first discovered
+            const PREFERRED_DEFAULTS = ["gpt-4o", "gpt-4", "claude-3-5-sonnet", "auto"];
+            let defaultModelId: string | undefined;
+            for (const pref of PREFERRED_DEFAULTS) {
+              if (discovered.some((m) => m.id === pref)) {
+                defaultModelId = pref;
+                break;
+              }
+            }
+            if (!defaultModelId && discovered.length > 0) {
+              defaultModelId = discovered[0].id;
+            }
+            const defaultModel = defaultModelId
+              ? `${PROVIDER_ID}/${defaultModelId}`
+              : AXONHUB_DEFAULT_MODEL_REF;
+
+            // 4. Build auth result with config patch that includes apiKey
             const profileId = `${PROVIDER_ID}:default`;
             const credential = buildApiKeyCredential(PROVIDER_ID, apiKey);
-            const nextConfig = applyAxonhubConfig(ctx.config, baseUrl);
+            const nextConfig = applyAxonhubConfig(ctx.config, baseUrl, apiKey);
 
             return {
               profiles: [{ profileId, credential }],
               configPatch: nextConfig,
-              defaultModel: AXONHUB_DEFAULT_MODEL_REF,
+              defaultModel,
             };
           },
         },
@@ -185,41 +280,47 @@ export default definePluginEntry({
           if (!apiKey) {
             return null;
           }
-          const baseUrl = resolveAxonhubBaseUrlForCatalog(ctx);
+          const baseUrl = resolveAxonhubConfigBaseUrl(ctx.config)
+            ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
+
           const models = discovered.length > 0
             ? discovered.map((m) => ({
                 id: m.id,
-                name: m.name ?? m.id,
-                reasoning: m.reasoning ?? false,
-                input: ["text", "image"] as const,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                name: m.name,
+                reasoning: m.reasoning,
+                input: m.input,
+                cost: m.cost,
                 contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
-                maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
-              })
-            : (buildAxonhubProvider().models ?? []);
+                maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+              }))
+            : [
+                // Minimal fallback when AxonHub is unreachable
+                {
+                  id: "auto",
+                  name: "AxonHub Auto",
+                  reasoning: false,
+                  input: ["text", "image"] as Array<"text" | "image">,
+                  cost: { ...AXONHUB_DEFAULT_COST },
+                  contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
+                  maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
+                },
+              ];
+
           return {
             provider: {
-              ...buildAxonhubProvider(),
               baseUrl,
               apiKey,
+              api: "openai-completions",
               models,
             },
           };
         },
       },
       augmentModelCatalog: async (ctx: ProviderAugmentModelCatalogContext) => {
-        const baseUrl = resolveAxonhubBaseUrlForCatalog(ctx);
-        const apiKey = ctx.config
-          ? ((): string | undefined => {
-              const providers = ctx.config.models?.providers;
-              if (!providers) return undefined;
-              const provider = providers[PROVIDER_ID];
-              if (!provider || typeof provider !== "object") return undefined;
-              const key = (provider as Record<string, unknown>).apiKey;
-              return typeof key === "string" ? key : undefined;
-            })()
-          : undefined;
+        const baseUrl = resolveAxonhubConfigBaseUrl(ctx.config)
+          ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+        const apiKey = resolveApiKeyForCatalog(ctx.config, ctx.env);
 
         if (apiKey) {
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
@@ -227,14 +328,17 @@ export default definePluginEntry({
             return discovered.map((m) => ({
               provider: PROVIDER_ID,
               id: m.id,
-              name: m.name ?? m.id,
+              name: m.name,
               contextWindow: m.contextWindow,
               reasoning: m.reasoning,
+              input: m.input,
             }));
           }
         }
 
-        return buildFallbackCatalogEntries();
+        // No API key or unreachable: return empty so model picker doesn't
+        // show stale hardcoded entries. The user can always type manually.
+        return [];
       },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
