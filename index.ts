@@ -8,9 +8,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
   buildApiKeyCredential,
-  ensureApiKeyFromEnvOrPrompt,
   normalizeApiKeyInput,
-  validateApiKeyInput,
 } from "openclaw/plugin-sdk/provider-auth";
 import {
   buildProviderReplayFamilyHooks,
@@ -27,6 +25,7 @@ import {
 
 const PROVIDER_ID = "axonhub";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
+const AXONHUB_API_KEY_ENV_VAR = "AXONHUB_API_KEY";
 
 export default definePluginEntry({
   id: PROVIDER_ID,
@@ -60,7 +59,7 @@ export default definePluginEntry({
       id: PROVIDER_ID,
       label: "AxonHub",
       docsPath: "/providers/axonhub",
-      envVars: ["AXONHUB_API_KEY"],
+      envVars: [AXONHUB_API_KEY_ENV_VAR],
       auth: [
         {
           id: "api-key",
@@ -68,6 +67,7 @@ export default definePluginEntry({
           hint: "API key from your AxonHub instance",
           kind: "custom",
           run: async (ctx: ProviderAuthContext): Promise<ProviderAuthResult> => {
+            // 1. Prompt for base URL
             const baseUrlRaw = await ctx.prompter.text({
               message: "AxonHub instance URL",
               initialValue: AXONHUB_DEFAULT_BASE_URL,
@@ -76,28 +76,36 @@ export default definePluginEntry({
             });
             const baseUrl = (baseUrlRaw ?? AXONHUB_DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
 
-            let capturedApiKey: string | undefined;
-            await ensureApiKeyFromEnvOrPrompt({
-              token: undefined,
-              config: ctx.config,
-              env: ctx.env ?? process.env,
-              provider: PROVIDER_ID,
-              envLabel: "AXONHUB_API_KEY",
-              promptMessage: "Enter your AxonHub API key",
-              normalize: normalizeApiKeyInput,
-              validate: validateApiKeyInput,
-              prompter: ctx.prompter,
-              setCredential: async (apiKey) => {
-                capturedApiKey = typeof apiKey === "string" ? apiKey : undefined;
-              },
-            });
+            // 2. Resolve API key: check env var first, then prompt
+            const env = ctx.env ?? process.env;
+            const envApiKey = env[AXONHUB_API_KEY_ENV_VAR]?.trim();
+            let apiKey: string;
+            if (envApiKey) {
+              const useEnv = await ctx.prompter.confirm({
+                message: `Use existing ${AXONHUB_API_KEY_ENV_VAR} from environment?`,
+                initialValue: true,
+              });
+              apiKey = useEnv ? envApiKey : (await ctx.prompter.text({
+                message: "Enter your AxonHub API key",
+                placeholder: "sk-...",
+                validate: (value) => (value?.trim() ? undefined : "Required"),
+              }))?.trim() ?? "";
+            } else {
+              const apiKeyRaw = await ctx.prompter.text({
+                message: "Enter your AxonHub API key",
+                placeholder: "sk-...",
+                validate: (value) => (value?.trim() ? undefined : "Required"),
+              });
+              apiKey = normalizeApiKeyInput(apiKeyRaw?.trim() ?? "");
+            }
 
-            if (!capturedApiKey) {
+            if (!apiKey) {
               throw new Error("Missing API key input for AxonHub.");
             }
 
+            // 3. Build result
             const profileId = `${PROVIDER_ID}:default`;
-            const credential = buildApiKeyCredential(PROVIDER_ID, capturedApiKey);
+            const credential = buildApiKeyCredential(PROVIDER_ID, apiKey);
             const nextConfig = applyAxonhubConfig(ctx.config, baseUrl);
 
             return {
