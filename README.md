@@ -22,9 +22,6 @@ In OpenClaw settings, configure the plugin with your AxonHub credentials:
 | API Key | Your AxonHub API key |
 | Base URL | AxonHub instance URL (default: `http://localhost:8090`) |
 
-
-Publishing is automated via GitHub Actions. Push a version tag to trigger the workflow.
-
 ## License
 
 MIT
