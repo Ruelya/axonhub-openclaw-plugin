@@ -2,18 +2,30 @@ import {
   definePluginEntry,
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
+  type ProviderAuthContext,
+  type ProviderAuthResult,
+  type ProviderAugmentModelCatalogContext,
 } from "openclaw/plugin-sdk/plugin-entry";
-import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-auth-api-key";
+import {
+  buildApiKeyCredential,
+  ensureApiKeyFromEnvOrPrompt,
+  normalizeApiKeyInput,
+  validateApiKeyInput,
+} from "openclaw/plugin-sdk/provider-auth";
 import {
   buildProviderReplayFamilyHooks,
   DEFAULT_CONTEXT_TOKENS,
 } from "openclaw/plugin-sdk/provider-model-shared";
 import { buildAxonhubProvider, resolveAxonhubModelCapabilities } from "./provider-catalog.js";
-import { applyAxonhubConfig, AXONHUB_DEFAULT_MODEL_REF } from "./onboard.js";
+import {
+  applyAxonhubConfig,
+  AXONHUB_DEFAULT_MODEL_REF,
+  AXONHUB_DEFAULT_BASE_URL,
+  AXONHUB_API_PATH,
+  resolveAxonhubConfigBaseUrl,
+} from "./onboard.js";
 
 const PROVIDER_ID = "axonhub";
-const AXONHUB_DEFAULT_BASE_URL = "http://localhost:8090";
-const AXONHUB_API_PATH = "/v1";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
 
 export default definePluginEntry({
@@ -50,72 +62,94 @@ export default definePluginEntry({
       docsPath: "/providers/axonhub",
       envVars: ["AXONHUB_API_KEY"],
       auth: [
-        createProviderApiKeyAuthMethod({
-          providerId: PROVIDER_ID,
-          methodId: "api-key",
+        {
+          id: "api-key",
           label: "AxonHub API key",
           hint: "API key from your AxonHub instance",
-          optionKey: "axonhubApiKey",
-          flagName: "--axonhub-api-key",
-          envVar: "AXONHUB_API_KEY",
-          promptMessage: "Enter your AxonHub API key",
-          defaultModel: AXONHUB_DEFAULT_MODEL_REF,
-          expectedProviders: [PROVIDER_ID],
-          applyConfig: applyAxonhubConfig,
-          wizard: {
-            choiceId: "axonhub-api-key",
-            choiceLabel: "AxonHub API key",
-            groupId: PROVIDER_ID,
-            groupLabel: "AxonHub",
-            groupHint: "API key from your AxonHub instance",
-          },
-        }),
-        {
-          id: "base-url",
-          label: "AxonHub Base URL",
-          kind: "api_key",
-          run: async (ctx) => {
-            const opts = ctx.opts as Record<string, unknown> | undefined;
-            const baseUrl = (opts?.axonhubBaseUrl as string) || await ctx.prompter.prompt({
-              message: "Enter your AxonHub instance URL",
+          kind: "custom",
+          run: async (ctx: ProviderAuthContext): Promise<ProviderAuthResult> => {
+            const baseUrlRaw = await ctx.prompter.text({
+              message: "AxonHub instance URL",
+              initialValue: AXONHUB_DEFAULT_BASE_URL,
               placeholder: AXONHUB_DEFAULT_BASE_URL,
-              defaultValue: AXONHUB_DEFAULT_BASE_URL,
+              validate: (value) => (value?.trim() ? undefined : "Required"),
             });
+            const baseUrl = (baseUrlRaw ?? AXONHUB_DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+
+            let capturedApiKey: string | undefined;
+            await ensureApiKeyFromEnvOrPrompt({
+              token: undefined,
+              config: ctx.config,
+              env: ctx.env ?? process.env,
+              provider: PROVIDER_ID,
+              envLabel: "AXONHUB_API_KEY",
+              promptMessage: "Enter your AxonHub API key",
+              normalize: normalizeApiKeyInput,
+              validate: validateApiKeyInput,
+              prompter: ctx.prompter,
+              setCredential: async (apiKey) => {
+                capturedApiKey = typeof apiKey === "string" ? apiKey : undefined;
+              },
+            });
+
+            if (!capturedApiKey) {
+              throw new Error("Missing API key input for AxonHub.");
+            }
+
+            const profileId = `${PROVIDER_ID}:default`;
+            const credential = buildApiKeyCredential(PROVIDER_ID, capturedApiKey);
+            const nextConfig = applyAxonhubConfig(ctx.config, baseUrl);
+
             return {
-              configPatch: {
-                plugins: {
-                  entries: {
-                    axonhub: {
-                      config: { baseUrl }
-                    }
-                  }
-                }
-              }
+              profiles: [{ profileId, credential }],
+              configPatch: nextConfig,
+              defaultModel: AXONHUB_DEFAULT_MODEL_REF,
             };
-          }
-        }
+          },
+        },
       ],
       catalog: {
         order: "simple",
         run: async (ctx) => {
-          const opts = ctx.opts as Record<string, unknown> | undefined;
-          const apiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey || (opts?.axonhubApiKey as string);
+          const apiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey;
           if (!apiKey) {
             return null;
           }
-          const baseUrl = (opts?.axonhubBaseUrl as string) || ctx.baseUrl || AXONHUB_DEFAULT_BASE_URL;
+          const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
+          const baseUrl = configuredBaseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
           return {
             provider: {
               ...buildAxonhubProvider(),
-              baseUrl: `${baseUrl}${AXONHUB_API_PATH}`,
+              baseUrl,
               apiKey,
             },
           };
         },
       },
+      augmentModelCatalog: (_ctx: ProviderAugmentModelCatalogContext) => {
+        const provider = buildAxonhubProvider();
+        return (provider.models ?? []).map((model) => ({
+          provider: PROVIDER_ID,
+          id: model.id,
+          name: model.name ?? model.id,
+          contextWindow: model.contextWindow,
+          reasoning: model.reasoning,
+          input: model.input,
+        }));
+      },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
       isModernModelRef: () => true,
+      wizard: {
+        setup: {
+          choiceId: "axonhub-api-key",
+          choiceLabel: "AxonHub",
+          groupId: PROVIDER_ID,
+          groupLabel: "AxonHub",
+          groupHint: "API key from your AxonHub instance",
+          methodId: "api-key",
+        },
+      },
     });
   },
 });
