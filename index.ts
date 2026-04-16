@@ -17,7 +17,7 @@ const AXONHUB_API_PATH = "/v1";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
 
 export default definePluginEntry({
-  id: "axonhub",
+  id: PROVIDER_ID,
   name: "AxonHub",
   description: "AxonHub AI Gateway provider plugin - Route requests to 100+ LLM providers",
   register(api) {
@@ -29,12 +29,13 @@ export default definePluginEntry({
       ctx: ProviderResolveDynamicModelContext,
     ): ProviderRuntimeModel {
       const capabilities = resolveAxonhubModelCapabilities(ctx.modelId);
+      const baseUrl = ctx.baseUrl ?? AXONHUB_DEFAULT_BASE_URL;
       return {
         id: ctx.modelId,
         name: capabilities?.name ?? ctx.modelId,
         api: "openai-completions",
         provider: PROVIDER_ID,
-        baseUrl: `${ctx.baseUrl ?? AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`,
+        baseUrl: `${baseUrl}${AXONHUB_API_PATH}`,
         reasoning: capabilities?.reasoning ?? false,
         input: capabilities?.input ?? ["text"],
         cost: capabilities?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -47,7 +48,7 @@ export default definePluginEntry({
       id: PROVIDER_ID,
       label: "AxonHub",
       docsPath: "/providers/axonhub",
-      envVars: ["AXONHUB_API_KEY", "AXONHUB_BASE_URL"],
+      envVars: ["AXONHUB_API_KEY"],
       auth: [
         createProviderApiKeyAuthMethod({
           providerId: PROVIDER_ID,
@@ -59,12 +60,12 @@ export default definePluginEntry({
           envVar: "AXONHUB_API_KEY",
           promptMessage: "Enter your AxonHub API key",
           defaultModel: AXONHUB_DEFAULT_MODEL_REF,
-          expectedProviders: ["axonhub"],
-          applyConfig: (cfg) => applyAxonhubConfig(cfg),
+          expectedProviders: [PROVIDER_ID],
+          applyConfig: applyAxonhubConfig,
           wizard: {
             choiceId: "axonhub-api-key",
             choiceLabel: "AxonHub API key",
-            groupId: "axonhub",
+            groupId: PROVIDER_ID,
             groupLabel: "AxonHub",
             groupHint: "API key from your AxonHub instance",
           },
@@ -81,7 +82,8 @@ export default definePluginEntry({
           const baseUrl = ctx.baseUrl ?? AXONHUB_DEFAULT_BASE_URL;
           return {
             provider: {
-              ...buildAxonhubProvider(baseUrl),
+              ...buildAxonhubProvider(),
+              baseUrl: `${baseUrl}${AXONHUB_API_PATH}`,
               apiKey,
             },
           };
