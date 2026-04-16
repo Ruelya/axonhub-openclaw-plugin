@@ -5,6 +5,7 @@ import {
   type ProviderAuthContext,
   type ProviderAuthResult,
   type ProviderAugmentModelCatalogContext,
+  type ProviderCatalogContext,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
   buildApiKeyCredential,
@@ -26,6 +27,67 @@ import {
 const PROVIDER_ID = "axonhub";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
 const AXONHUB_API_KEY_ENV_VAR = "AXONHUB_API_KEY";
+const AXONHUB_DEFAULT_CONTEXT_WINDOW = 200000;
+
+type DiscoveredModel = {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  reasoning?: boolean;
+};
+
+async function fetchAxonhubModels(params: {
+  baseUrl: string;
+  apiKey: string;
+  timeoutMs?: number;
+}): Promise<DiscoveredModel[]> {
+  const baseUrl = params.baseUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/models`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      signal: AbortSignal.timeout(params.timeoutMs ?? 5000),
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const data = await response.json() as { data?: Array<{ id?: string }> };
+    const models = Array.isArray(data.data) ? data.data : [];
+    return models
+      .map((m) => {
+        const id = typeof m.id === "string" ? m.id.trim() : "";
+        if (!id) return null;
+        return {
+          id,
+          name: id,
+          contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
+          reasoning: /o1|o3|o4|r1|reasoning|think|reason|deepseek-r/i.test(id),
+        } satisfies DiscoveredModel;
+      })
+      .filter((m): m is DiscoveredModel => m !== null);
+  } catch {
+    return [];
+  }
+}
+
+function buildFallbackCatalogEntries() {
+  const provider = buildAxonhubProvider();
+  return (provider.models ?? []).map((model) => ({
+    provider: PROVIDER_ID,
+    id: model.id,
+    name: model.name ?? model.id,
+    contextWindow: model.contextWindow,
+    reasoning: model.reasoning,
+    input: model.input,
+  }));
+}
+
+function resolveAxonhubBaseUrlForCatalog(ctx: ProviderCatalogContext | ProviderAugmentModelCatalogContext): string {
+  const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
+  return configuredBaseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+}
 
 export default definePluginEntry({
   id: PROVIDER_ID,
@@ -118,32 +180,61 @@ export default definePluginEntry({
       ],
       catalog: {
         order: "simple",
-        run: async (ctx) => {
+        run: async (ctx: ProviderCatalogContext) => {
           const apiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey;
           if (!apiKey) {
             return null;
           }
-          const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
-          const baseUrl = configuredBaseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+          const baseUrl = resolveAxonhubBaseUrlForCatalog(ctx);
+          const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
+          const models = discovered.length > 0
+            ? discovered.map((m) => ({
+                id: m.id,
+                name: m.name ?? m.id,
+                reasoning: m.reasoning ?? false,
+                input: ["text", "image"] as const,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+                maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
+              })
+            : (buildAxonhubProvider().models ?? []);
           return {
             provider: {
               ...buildAxonhubProvider(),
               baseUrl,
               apiKey,
+              models,
             },
           };
         },
       },
-      augmentModelCatalog: (_ctx: ProviderAugmentModelCatalogContext) => {
-        const provider = buildAxonhubProvider();
-        return (provider.models ?? []).map((model) => ({
-          provider: PROVIDER_ID,
-          id: model.id,
-          name: model.name ?? model.id,
-          contextWindow: model.contextWindow,
-          reasoning: model.reasoning,
-          input: model.input,
-        }));
+      augmentModelCatalog: async (ctx: ProviderAugmentModelCatalogContext) => {
+        const baseUrl = resolveAxonhubBaseUrlForCatalog(ctx);
+        const apiKey = ctx.config
+          ? ((): string | undefined => {
+              const providers = ctx.config.models?.providers;
+              if (!providers) return undefined;
+              const provider = providers[PROVIDER_ID];
+              if (!provider || typeof provider !== "object") return undefined;
+              const key = (provider as Record<string, unknown>).apiKey;
+              return typeof key === "string" ? key : undefined;
+            })()
+          : undefined;
+
+        if (apiKey) {
+          const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
+          if (discovered.length > 0) {
+            return discovered.map((m) => ({
+              provider: PROVIDER_ID,
+              id: m.id,
+              name: m.name ?? m.id,
+              contextWindow: m.contextWindow,
+              reasoning: m.reasoning,
+            }));
+          }
+        }
+
+        return buildFallbackCatalogEntries();
       },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
