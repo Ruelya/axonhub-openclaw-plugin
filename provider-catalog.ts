@@ -16,7 +16,7 @@ export function buildAxonhubProvider(): ModelProviderConfig {
     api: "openai-completions",
     models: [
       {
-        id: "axonhub/auto",
+        id: "auto",
         name: "AxonHub Auto",
         reasoning: false,
         input: ["text", "image"],
@@ -25,7 +25,7 @@ export function buildAxonhubProvider(): ModelProviderConfig {
         maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
       },
       {
-        id: "axonhub/gpt-4o",
+        id: "gpt-4o",
         name: "GPT-4o (via AxonHub)",
         reasoning: false,
         input: ["text", "image"],
@@ -34,7 +34,7 @@ export function buildAxonhubProvider(): ModelProviderConfig {
         maxTokens: 16384,
       },
       {
-        id: "axonhub/claude-3-5-sonnet",
+        id: "claude-3-5-sonnet",
         name: "Claude 3.5 Sonnet (via AxonHub)",
         reasoning: true,
         input: ["text", "image"],
@@ -43,7 +43,7 @@ export function buildAxonhubProvider(): ModelProviderConfig {
         maxTokens: 8192,
       },
       {
-        id: "axonhub/gemini-2.0-flash",
+        id: "gemini-2.0-flash",
         name: "Gemini 2.0 Flash (via AxonHub)",
         reasoning: false,
         input: ["text", "image"],
@@ -58,6 +58,11 @@ export function buildAxonhubProvider(): ModelProviderConfig {
 export function resolveAxonhubModelCapabilities(
   modelId: string,
 ): ModelCapability | undefined {
+  const prefix = "axonhub/";
+  if (modelId.startsWith(prefix)) {
+    modelId = modelId.substring(prefix.length);
+  }
+
   const provider = buildAxonhubProvider();
   const model = provider.models?.find((m) => m.id === modelId);
   
@@ -69,19 +74,6 @@ export function resolveAxonhubModelCapabilities(
       cost: model.cost ?? AXONHUB_DEFAULT_COST,
       contextWindow: model.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
       maxTokens: model.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
-    };
-  }
-
-  const prefix = "axonhub/";
-  if (modelId.startsWith(prefix)) {
-    const baseModelId = modelId.substring(prefix.length);
-    return {
-      name: `${baseModelId} (via AxonHub)`,
-      reasoning: false,
-      input: ["text"],
-      cost: AXONHUB_DEFAULT_COST,
-      contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
-      maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
     };
   }
 

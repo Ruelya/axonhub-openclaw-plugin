@@ -12,12 +12,28 @@
     {
       "provider": "axonhub",
       "method": "api-key",
-      "choiceId": "axonhub-setup",
-      "choiceLabel": "AxonHub",
-      "choiceHint": "Connect to your AxonHub AI Gateway",
+      "choiceId": "axonhub-api-key",
+      "choiceLabel": "AxonHub API key",
       "groupId": "axonhub",
       "groupLabel": "AxonHub",
-      "methodId": "api-key"
+      "groupHint": "API key from your AxonHub instance",
+      "optionKey": "axonhubApiKey",
+      "cliFlag": "--axonhub-api-key",
+      "cliOption": "--axonhub-api-key <key>",
+      "cliDescription": "AxonHub API key"
+    },
+    {
+      "provider": "axonhub",
+      "method": "base-url",
+      "choiceId": "axonhub-base-url",
+      "choiceLabel": "AxonHub Base URL",
+      "groupId": "axonhub",
+      "groupLabel": "AxonHub",
+      "groupHint": "Custom AxonHub instance URL",
+      "optionKey": "axonhubBaseUrl",
+      "cliFlag": "--axonhub-base-url",
+      "cliOption": "--axonhub-base-url <url>",
+      "cliDescription": "AxonHub instance base URL (default: http://localhost:8090)"
     }
   ],
   "configSchema": {
