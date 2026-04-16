@@ -1,0 +1,50 @@
+{
+  "name": "@ruelya/axonhub-openclaw-plugin",
+  "version": "0.0.2",
+  "private": false,
+  "description": "**Under development** AxonHub AI Gateway provider plugin for OpenClaw - Route requests to 100+ LLM providers",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "*.ts",
+    "*.json",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.12",
+      "minGatewayVersion": "2026.4.12"
+    },
+    "build": {
+      "openclawVersion": "2026.4.12",
+      "pluginSdkVersion": "2026.4.12"
+    }
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "provider",
+    "ai",
+    "llm",
+    "axonhub",
+    "gateway"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ruelya/axonhub-openclaw-plugin.git"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+ }

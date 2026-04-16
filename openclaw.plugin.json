@@ -1,0 +1,37 @@
+{
+  "id": "axonhub",
+  "enabledByDefault": false,
+  "name": "AxonHub",
+  "description": "AxonHub AI Gateway - Route requests to 100+ LLM providers",
+  "version": "1.0.0",
+  "providers": ["axonhub"],
+  "providerAuthEnvVars": {
+    "axonhub": ["AXONHUB_API_KEY"]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "axonhub",
+      "method": "api-key",
+      "choiceId": "axonhub-api-key",
+      "choiceLabel": "AxonHub API key",
+      "groupId": "axonhub",
+      "groupLabel": "AxonHub",
+      "groupHint": "API key from your AxonHub instance",
+      "optionKey": "axonhubApiKey",
+      "cliFlag": "--axonhub-api-key",
+      "cliOption": "--axonhub-api-key <key>",
+      "cliDescription": "AxonHub API key"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "AxonHub instance base URL",
+        "default": "http://localhost:8090"
+      }
+    }
+  }
+}
