@@ -35,6 +35,16 @@ const AXONHUB_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
+// Model IDs known to support xhigh reasoning through AxonHub.
+// AxonHub proxies these models via OpenAI-compatible API, so xhigh is
+// supported whenever the upstream model supports it.
+const AXONHUB_XHIGH_MODEL_PREFIXES = [
+  "gpt-5.4",
+  "gpt-5.2",
+  "o3",
+  "o4-mini",
+] as const;
+
 // --- AxonHub API types for /v1/models?include=... response ---
 
 type AxonhubCapabilities = {
@@ -340,6 +350,10 @@ export default definePluginEntry({
         return [];
       },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
+      supportsXHighThinking: ({ modelId }) =>
+        AXONHUB_XHIGH_MODEL_PREFIXES.some((prefix) =>
+          modelId.toLowerCase().startsWith(prefix),
+        ),
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
       isModernModelRef: () => true,
       wizard: {
