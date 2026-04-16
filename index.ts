@@ -3,7 +3,6 @@ import {
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
 } from "openclaw/plugin-sdk/plugin-entry";
-import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-auth-api-key";
 import {
   buildProviderReplayFamilyHooks,
   DEFAULT_CONTEXT_TOKENS,
@@ -50,27 +49,62 @@ export default definePluginEntry({
       docsPath: "/providers/axonhub",
       envVars: ["AXONHUB_API_KEY"],
       auth: [
-        createProviderApiKeyAuthMethod({
-          providerId: PROVIDER_ID,
-          methodId: "api-key",
-          label: "AxonHub API key",
-          hint: "API key from your AxonHub instance",
-          optionKey: "axonhubApiKey",
-          flagName: "--axonhub-api-key",
-          envVar: "AXONHUB_API_KEY",
-          promptMessage: "Enter your AxonHub API key",
-          defaultModel: AXONHUB_DEFAULT_MODEL_REF,
-          expectedProviders: [PROVIDER_ID],
-          applyConfig: applyAxonhubConfig,
-          wizard: {
-            choiceId: "axonhub-api-key",
-            choiceLabel: "AxonHub API key",
-            groupId: PROVIDER_ID,
-            groupLabel: "AxonHub",
-            groupHint: "API key from your AxonHub instance",
+        {
+          id: "api-key",
+          label: "AxonHub setup",
+          hint: "Configure AxonHub instance URL and API key",
+          kind: "custom",
+          run: async (ctx) => {
+            const baseUrlInput = await ctx.prompter.text({
+              message: "AxonHub Base URL",
+              initialValue: AXONHUB_DEFAULT_BASE_URL,
+              validate: (v) => (v.trim() ? undefined : "Base URL is required"),
+            });
+
+            const apiKeyInput = await ctx.prompter.password({
+              message: "AxonHub API Key",
+              validate: (v) => (v.trim() ? undefined : "API Key is required"),
+            });
+
+            const baseUrl = baseUrlInput.trim().replace(/\/+$/, "");
+            const apiKey = apiKeyInput.trim();
+
+            return {
+              profiles: [
+                {
+                  profileId: `${PROVIDER_ID}:default`,
+                  credential: {
+                    type: "api_key",
+                    provider: PROVIDER_ID,
+                    key: apiKey,
+                  },
+                },
+              ],
+              configPatch: {
+                models: {
+                  providers: {
+                    [PROVIDER_ID]: {
+                      baseUrl: `${baseUrl}${AXONHUB_API_PATH}`,
+                      apiKey: apiKey,
+                      api: "openai-completions",
+                    },
+                  },
+                },
+              },
+              defaultModel: AXONHUB_DEFAULT_MODEL_REF,
+              applyConfig: (cfg) => applyAxonhubConfig(cfg),
+            };
           },
-        }),
+        },
       ],
+      wizard: {
+        setup: {
+          choiceId: "axonhub-setup",
+          choiceLabel: "AxonHub",
+          choiceHint: "Connect to your AxonHub AI Gateway",
+          methodId: "api-key",
+        },
+      },
       catalog: {
         order: "simple",
         run: async (ctx) => {
