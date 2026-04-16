@@ -14,8 +14,6 @@ export function applyAxonhubConfig(
   let providers = { ...models.providers ?? {} };
   let axonhubProvider = { ...providers[AXONHUB_PROVIDER_ID] };
 
-  axonhubProvider.defaultModel = AXONHUB_DEFAULT_MODEL_REF;
-
   const resolvedBaseUrl = baseUrl
     ? `${baseUrl.replace(/\/+$/, "")}${AXONHUB_API_PATH}`
     : axonhubProvider.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
