@@ -1,21 +1,38 @@
 # AxonHub OpenClaw Plugin
 
-AxonHub AI Gateway provider plugin for OpenClaw.
+AxonHub AI Gateway provider plugin for OpenClaw — Route requests to 100+ LLM providers through a unified API gateway.
 
 ## Features
 
-- Route requests to 100+ LLM providers via OpenAI-compatible API
-- Dynamic model resolution
+- Dynamic model discovery from your AxonHub instance
+- Custom base URL for self-hosted AxonHub deployments
+- OpenAI-compatible API transport (`openai-completions`)
+- xhigh reasoning support for capable models (gpt-5.x, o3, o4-mini)
+- Automatic model metadata: context window, pricing, capabilities
 
 ## Installation
 
 ```bash
-npm install @ruelya/axonhub-openclaw-plugin
+openclaw plugins install @ruelya/axonhub-openclaw-plugin
+```
+
+Or explicitly from ClawHub:
+
+```bash
+openclaw plugins install clawhub:@ruelya/axonhub-openclaw-plugin
+```
+
+Restart the gateway after installing.
+
+## Setup
+
+Run onboarding to configure AxonHub:
+
+```bash
+openclaw onboard --axonhub-api-key <your-api-key>
 ```
 
 ## Configuration
-
-In OpenClaw settings, configure the plugin with your AxonHub credentials:
 
 | Setting | Description |
 |---------|-------------|
