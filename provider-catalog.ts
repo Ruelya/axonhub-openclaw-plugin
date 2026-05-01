@@ -1,4 +1,4 @@
-import type { ModelCapability } from "openclaw/plugin-sdk/provider-model-shared";
+import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-model-shared";
 
 const AXONHUB_DEFAULT_CONTEXT_WINDOW = 200000;
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
@@ -11,13 +11,14 @@ const AXONHUB_DEFAULT_COST = {
 
 export function resolveAxonhubModelCapabilities(
   modelId: string,
-): ModelCapability {
+): ModelDefinitionConfig {
   const prefix = "axonhub/";
   if (modelId.startsWith(prefix)) {
     modelId = modelId.substring(prefix.length);
   }
 
   return {
+    id: modelId,
     name: modelId,
     reasoning: false,
     input: ["text"],

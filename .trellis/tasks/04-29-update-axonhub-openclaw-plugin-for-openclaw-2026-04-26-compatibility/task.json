@@ -1,0 +1,32 @@
+{
+  "id": "update-axonhub-openclaw-plugin-for-openclaw-2026-04-26-compatibility",
+  "name": "update-axonhub-openclaw-plugin-for-openclaw-2026-04-26-compatibility",
+  "title": "Update AxonHub OpenClaw plugin for OpenClaw 2026.04.26 compatibility",
+  "description": "Update this OpenClaw provider plugin so it is compatible with OpenClaw 2026.04.26 plugin/provider breaking changes. Use local sibling OpenClaw repository at ../openclaw and upstream https://github.com/openclaw/openclaw as reference. Preserve existing AxonHub behavior, dynamic catalog support, xhigh thinking support, and plugin packaging. Do not commit.",
+  "status": "in_progress",
+  "dev_type": "provider-plugin",
+  "scope": "compatibility",
+  "package": "@ruelya/axonhub-openclaw-plugin",
+  "priority": "P2",
+  "creator": "openclaw",
+  "assignee": "openclaw",
+  "createdAt": "2026-04-29",
+  "completedAt": "2026-04-29",
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "index.ts",
+    "openclaw.plugin.json",
+    "package.json",
+    "package-lock.json",
+    "provider-catalog.ts",
+    "tsconfig.json"
+  ],
+  "notes": "Updated for OpenClaw 2026.04.26+ provider/plugin changes: manifest now declares activation.onProviders and setup.providers env metadata, deprecated providerAuthEnvVars was removed, package compatibility metadata was bumped, SDK type breakages were fixed, and a local typecheck setup was added. Verified with npm run validate:manifest, npm run typecheck, and manifest/package compatibility checks. No git commit made.\n2026-04-29: Reopened for official OpenClaw 2026.4.26 verification, prior context-window bug validation, and release/tag preparation."
+}

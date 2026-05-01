@@ -6,6 +6,7 @@ import {
   type ProviderAuthResult,
   type ProviderAugmentModelCatalogContext,
   type ProviderCatalogContext,
+  type OpenClawConfig,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
   buildApiKeyCredential,
@@ -185,7 +186,10 @@ export default definePluginEntry({
     function buildDynamicAxonhubModel(
       ctx: ProviderResolveDynamicModelContext,
     ): ProviderRuntimeModel {
-      const baseUrl = ctx.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+      const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
+      const baseUrl = ctx.providerConfig?.baseUrl
+        ?? (configuredBaseUrl ? configuredBaseUrl.replace(/\/+$/, "") : undefined)
+        ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
       return {
         id: ctx.modelId,
         name: ctx.modelId,
@@ -289,8 +293,10 @@ export default definePluginEntry({
           if (!apiKey) {
             return null;
           }
-          const baseUrl = resolveAxonhubConfigBaseUrl(ctx.config)
-            ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+          const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
+          const baseUrl = configuredBaseUrl
+            ? configuredBaseUrl.replace(/\/+$/, "")
+            : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
 
           const models = discovered.length > 0
@@ -327,8 +333,10 @@ export default definePluginEntry({
         },
       },
       augmentModelCatalog: async (ctx: ProviderAugmentModelCatalogContext) => {
-        const baseUrl = resolveAxonhubConfigBaseUrl(ctx.config)
-          ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+        const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
+        const baseUrl = configuredBaseUrl
+          ? configuredBaseUrl.replace(/\/+$/, "")
+          : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
         const apiKey = resolveApiKeyForCatalog(ctx.config, ctx.env);
 
         if (apiKey) {
@@ -338,9 +346,11 @@ export default definePluginEntry({
               provider: PROVIDER_ID,
               id: m.id,
               name: m.name,
-              contextWindow: m.contextWindow,
+              contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+              maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
               reasoning: m.reasoning,
               input: m.input,
+              cost: m.cost,
             }));
           }
         }
