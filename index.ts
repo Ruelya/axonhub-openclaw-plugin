@@ -1,4 +1,8 @@
 import {
+  createDeepSeekV4OpenAICompatibleThinkingWrapper,
+  createPayloadPatchStreamWrapper,
+} from "openclaw/plugin-sdk/provider-stream-shared";
+import {
   definePluginEntry,
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
@@ -45,6 +49,80 @@ const AXONHUB_XHIGH_MODEL_PREFIXES = [
   "o3",
   "o4-mini",
 ] as const;
+
+const AXONHUB_MAX_THINKING_MODEL_PREFIXES = [
+  ...AXONHUB_XHIGH_MODEL_PREFIXES,
+  "deepseek-v4-flash",
+  "deepseek-v4-pro",
+] as const;
+
+function normalizeAxonhubModelId(modelId: string): string {
+  return modelId.toLowerCase().replace(/^axonhub\//, "");
+}
+
+function supportsXHighThinkingModel(modelId: string): boolean {
+  const normalized = normalizeAxonhubModelId(modelId);
+  return AXONHUB_MAX_THINKING_MODEL_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix),
+  );
+}
+
+function isDeepSeekV4ModelId(modelId: string): boolean {
+  const normalized = normalizeAxonhubModelId(modelId);
+  return normalized === "deepseek-v4-flash" || normalized === "deepseek-v4-pro";
+}
+
+function buildAxonhubThinkingProfile(modelId: string, reasoning?: boolean) {
+  if (!reasoning && !supportsXHighThinkingModel(modelId)) {
+    return null;
+  }
+  const levels = [
+    { id: "off" as const, label: "off", rank: 0 },
+    { id: "minimal" as const, label: "minimal", rank: 10 },
+    { id: "low" as const, label: "low", rank: 20 },
+    { id: "medium" as const, label: "medium", rank: 30 },
+    { id: "high" as const, label: "high", rank: 40 },
+    ...(supportsXHighThinkingModel(modelId)
+      ? [
+          { id: "xhigh" as const, label: "xhigh", rank: 60 },
+          { id: "max" as const, label: "max", rank: 70 },
+        ]
+      : []),
+  ];
+
+  return {
+    levels,
+    defaultLevel: reasoning ? "low" as const : undefined,
+  };
+}
+
+function createDeepSeekV4AxonhubThinkingWrapper(ctx: {
+  streamFn: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["baseStreamFn"];
+  thinkingLevel: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["thinkingLevel"];
+}) {
+  return createDeepSeekV4OpenAICompatibleThinkingWrapper({
+    baseStreamFn: ctx.streamFn,
+    thinkingLevel: ctx.thinkingLevel,
+    shouldPatchModel: (model) =>
+      model.provider === PROVIDER_ID && isDeepSeekV4ModelId(model.id),
+  });
+}
+
+function createOpenAICompatibleMaxThinkingWrapper(ctx: {
+  modelId: string;
+  streamFn: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["baseStreamFn"];
+  thinkingLevel: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["thinkingLevel"];
+}) {
+  if (!ctx.streamFn || ctx.thinkingLevel !== "max" || !supportsXHighThinkingModel(ctx.modelId)) {
+    return ctx.streamFn;
+  }
+  return createPayloadPatchStreamWrapper(ctx.streamFn, ({ payload }) => {
+    payload.reasoning_effort = "max";
+    if (payload.reasoning && typeof payload.reasoning === "object") {
+      (payload.reasoning as Record<string, unknown>).effort = "max";
+    }
+  });
+}
 
 // --- AxonHub API types for /v1/models?include=... response ---
 
@@ -360,10 +438,20 @@ export default definePluginEntry({
         return [];
       },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
-      supportsXHighThinking: ({ modelId }) =>
-        AXONHUB_XHIGH_MODEL_PREFIXES.some((prefix) =>
-          modelId.toLowerCase().startsWith(prefix),
-        ),
+      resolveThinkingProfile: ({ modelId, reasoning }) =>
+        buildAxonhubThinkingProfile(modelId, reasoning),
+      supportsXHighThinking: ({ modelId }) => supportsXHighThinkingModel(modelId),
+      wrapStreamFn: (ctx) => {
+        const deepseekWrapped = createDeepSeekV4AxonhubThinkingWrapper({
+          streamFn: ctx.streamFn,
+          thinkingLevel: ctx.thinkingLevel,
+        });
+        return createOpenAICompatibleMaxThinkingWrapper({
+          modelId: ctx.modelId,
+          streamFn: deepseekWrapped ?? ctx.streamFn,
+          thinkingLevel: ctx.thinkingLevel,
+        });
+      },
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
       isModernModelRef: () => true,
       wizard: {

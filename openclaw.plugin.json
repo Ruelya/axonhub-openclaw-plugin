@@ -7,7 +7,7 @@
   "enabledByDefault": false,
   "name": "AxonHub",
   "description": "AxonHub AI Gateway - Route requests to 100+ LLM providers",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "providers": ["axonhub"],
   "setup": {
     "providers": [

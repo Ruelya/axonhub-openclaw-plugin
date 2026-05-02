@@ -1,6 +1,6 @@
 {
   "name": "@ruelya/axonhub-openclaw-plugin",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": false,
   "description": "AxonHub AI Gateway provider plugin for OpenClaw - Route requests to 100+ LLM providers",
   "type": "module",
@@ -19,7 +19,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "validate:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('openclaw.plugin.json','utf8')); console.log('openclaw.plugin.json OK')\""
+    "validate:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('openclaw.plugin.json','utf8')); console.log('openclaw.plugin.json OK')\"",
+    "test:reasoning-profile": "node test/reasoning-profile.test.mjs"
   },
   "peerDependencies": {
     "openclaw": ">=2026.4.29"
