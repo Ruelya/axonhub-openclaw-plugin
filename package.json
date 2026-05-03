@@ -1,6 +1,6 @@
 {
   "name": "@ruelya/axonhub-openclaw-plugin",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": false,
   "description": "AxonHub AI Gateway provider plugin for OpenClaw - Route requests to 100+ LLM providers",
   "type": "module",

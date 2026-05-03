@@ -50,10 +50,14 @@ const AXONHUB_XHIGH_MODEL_PREFIXES = [
   "o4-mini",
 ] as const;
 
-const AXONHUB_MAX_THINKING_MODEL_PREFIXES = [
-  ...AXONHUB_XHIGH_MODEL_PREFIXES,
+const AXONHUB_DEEPSEEK_V4_MODEL_IDS = [
   "deepseek-v4-flash",
   "deepseek-v4-pro",
+] as const;
+
+const AXONHUB_MAX_THINKING_MODEL_PREFIXES = [
+  ...AXONHUB_XHIGH_MODEL_PREFIXES,
+  ...AXONHUB_DEEPSEEK_V4_MODEL_IDS,
 ] as const;
 
 function normalizeAxonhubModelId(modelId: string): string {
@@ -69,7 +73,7 @@ function supportsXHighThinkingModel(modelId: string): boolean {
 
 function isDeepSeekV4ModelId(modelId: string): boolean {
   const normalized = normalizeAxonhubModelId(modelId);
-  return normalized === "deepseek-v4-flash" || normalized === "deepseek-v4-pro";
+  return (AXONHUB_DEEPSEEK_V4_MODEL_IDS as readonly string[]).includes(normalized);
 }
 
 function buildAxonhubThinkingProfile(modelId: string, reasoning?: boolean) {
