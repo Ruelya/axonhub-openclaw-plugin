@@ -44,8 +44,7 @@ const AXONHUB_DEFAULT_COST = {
 // AxonHub proxies these models via OpenAI-compatible API, so xhigh is
 // supported whenever the upstream model supports it.
 const AXONHUB_XHIGH_MODEL_PREFIXES = [
-  "gpt-5.4",
-  "gpt-5.2",
+  "gpt-5",
   "o3",
   "o4-mini",
 ] as const;

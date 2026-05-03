@@ -32,7 +32,10 @@ function levels(modelId, reasoning = true) {
 
 assert.deepEqual(levels('deepseek-v4-flash'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 assert.deepEqual(levels('axonhub/deepseek-v4-pro'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
-assert.deepEqual(levels('gpt-5.4'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+assert.deepEqual(levels('gpt-5.5'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+assert.deepEqual(levels('gpt-5.4-mini'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+assert.deepEqual(levels('gpt-5.3-codex'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+assert.deepEqual(levels('gpt-5.2'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 assert.deepEqual(levels('ordinary-reasoning-model'), ['off', 'minimal', 'low', 'medium', 'high']);
 assert.equal(provider.resolveThinkingProfile({ provider: 'axonhub', modelId: 'plain-chat', reasoning: false }), null);
 assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'deepseek-v4-flash' }), true);
