@@ -10,6 +10,7 @@ import {
   type ProviderAuthResult,
   type ProviderAugmentModelCatalogContext,
   type ProviderCatalogContext,
+  type ProviderThinkingProfile,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
@@ -28,6 +29,15 @@ import {
   resolveAxonhubConfigBaseUrl,
   resolveAxonhubConfigApiKey,
 } from "./onboard.js";
+import {
+  AXONHUB_BASE_REASONING_PROFILE,
+  isAxonhubDeepSeekV4ModelId,
+  normalizeAxonhubModelId,
+  readApiReasoningEfforts,
+  resolveAxonhubFamily,
+  supportsAxonhubMaxThinking,
+  supportsAxonhubXHighThinking,
+} from "./family-table.js";
 
 const PROVIDER_ID = "axonhub";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
@@ -40,65 +50,51 @@ const AXONHUB_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
-// Model IDs known to support xhigh reasoning through AxonHub.
-// AxonHub proxies these models via OpenAI-compatible API, so xhigh is
-// supported whenever the upstream model supports it.
-const AXONHUB_XHIGH_MODEL_PREFIXES = [
-  "gpt-5",
-  "o3",
-  "o4-mini",
-] as const;
-
-const AXONHUB_DEEPSEEK_V4_MODEL_IDS = [
-  "deepseek-v4-flash",
-  "deepseek-v4-pro",
-] as const;
-
-const AXONHUB_MAX_THINKING_MODEL_PREFIXES = [
-  ...AXONHUB_XHIGH_MODEL_PREFIXES,
-  ...AXONHUB_DEEPSEEK_V4_MODEL_IDS,
-] as const;
-
-function normalizeAxonhubModelId(modelId: string): string {
-  return modelId.toLowerCase().replace(/^axonhub\//, "");
-}
-
-function supportsXHighThinkingModel(modelId: string): boolean {
-  const normalized = normalizeAxonhubModelId(modelId);
-  return AXONHUB_MAX_THINKING_MODEL_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix),
-  );
-}
-
-function isDeepSeekV4ModelId(modelId: string): boolean {
-  const normalized = normalizeAxonhubModelId(modelId);
-  return (AXONHUB_DEEPSEEK_V4_MODEL_IDS as readonly string[]).includes(normalized);
-}
-
-function buildAxonhubThinkingProfile(modelId: string, reasoning?: boolean) {
-  if (!reasoning && !supportsXHighThinkingModel(modelId)) {
+/**
+ * Build the thinking profile for a given AxonHub model.
+ *
+ * Priority:
+ * 1. If the family table matches the model id → use the family's profile
+ *    (Claude 4.7 → xhigh+adaptive+max, gpt-5/o3/o4-mini → xhigh+max,
+ *    Gemini 3 → xhigh, etc.).
+ * 2. Else if `reasoning` is true → return the standard 5-level base profile.
+ * 3. Else → return null (no profile, OpenClaw falls back to default).
+ *
+ * Note: when reasoning=true and the family is not matched, OpenClaw's transport
+ * layer auto-downgrades any future xhigh request to high, so users won't hit
+ * upstream 400s. Max remains gated by `wrapStreamFn` so it never leaks to
+ * unsupported families.
+ */
+function buildAxonhubThinkingProfile(
+  modelId: string,
+  reasoning?: boolean,
+): ProviderThinkingProfile | null {
+  const family = resolveAxonhubFamily(modelId);
+  if (family) {
+    // Preserve the family's defaultLevel if the family helper set one (Claude
+    // adaptive/opus profiles set a default). Otherwise fall back to "low" when
+    // the catalog reports the model as a reasoning model.
+    if (family.profile.defaultLevel !== undefined) {
+      return family.profile;
+    }
+    return {
+      ...family.profile,
+      defaultLevel: reasoning ? "low" : undefined,
+    };
+  }
+  if (!reasoning) {
     return null;
   }
-  const levels = [
-    { id: "off" as const, label: "off", rank: 0 },
-    { id: "minimal" as const, label: "minimal", rank: 10 },
-    { id: "low" as const, label: "low", rank: 20 },
-    { id: "medium" as const, label: "medium", rank: 30 },
-    { id: "high" as const, label: "high", rank: 40 },
-    ...(supportsXHighThinkingModel(modelId)
-      ? [
-          { id: "xhigh" as const, label: "xhigh", rank: 60 },
-          { id: "max" as const, label: "max", rank: 70 },
-        ]
-      : []),
-  ];
-
   return {
-    levels,
-    defaultLevel: reasoning ? "low" as const : undefined,
+    ...AXONHUB_BASE_REASONING_PROFILE,
+    defaultLevel: "low",
   };
 }
 
+/**
+ * wrapStreamFn helper for DeepSeek V4. Keeps the existing payload-shape
+ * wrapper from provider-stream-shared.
+ */
 function createDeepSeekV4AxonhubThinkingWrapper(ctx: {
   streamFn: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["baseStreamFn"];
   thinkingLevel: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["thinkingLevel"];
@@ -107,16 +103,21 @@ function createDeepSeekV4AxonhubThinkingWrapper(ctx: {
     baseStreamFn: ctx.streamFn,
     thinkingLevel: ctx.thinkingLevel,
     shouldPatchModel: (model) =>
-      model.provider === PROVIDER_ID && isDeepSeekV4ModelId(model.id),
+      model.provider === PROVIDER_ID && isAxonhubDeepSeekV4ModelId(model.id),
   });
 }
 
+/**
+ * Wrapper that injects `reasoning_effort: max` on outgoing payloads for
+ * families known to support it. Driven by the family table so coverage stays
+ * in one place.
+ */
 function createOpenAICompatibleMaxThinkingWrapper(ctx: {
   modelId: string;
   streamFn: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["baseStreamFn"];
   thinkingLevel: Parameters<typeof createDeepSeekV4OpenAICompatibleThinkingWrapper>[0]["thinkingLevel"];
 }) {
-  if (!ctx.streamFn || ctx.thinkingLevel !== "max" || !supportsXHighThinkingModel(ctx.modelId)) {
+  if (!ctx.streamFn || ctx.thinkingLevel !== "max" || !supportsAxonhubMaxThinking(ctx.modelId)) {
     return ctx.streamFn;
   }
   return createPayloadPatchStreamWrapper(ctx.streamFn, ({ payload }) => {
@@ -133,6 +134,12 @@ type AxonhubCapabilities = {
   vision?: boolean;
   tool_call?: boolean;
   reasoning?: boolean;
+  // Forward-compat: AxonHub v0.9.38 doesn't expose any of these, but if a
+  // future version adds them, the plugin reads them via readApiReasoningEfforts.
+  reasoning_efforts?: string[];
+  reasoning_effort_levels?: string[];
+  effort_levels?: string[];
+  reasoning_levels?: string[];
 };
 
 type AxonhubPricing = {
@@ -180,7 +187,35 @@ type DiscoveredModel = {
     cacheRead: number;
     cacheWrite: number;
   };
+  /**
+   * Per-model `compat.supportedReasoningEfforts` to surface in the catalog.
+   * Computed from the API response (forward-compat) or the family table.
+   * Undefined when neither source has an opinion (lets OpenClaw transport
+   * auto-detect via id pattern + auto-downgrade).
+   */
+  supportedReasoningEfforts?: readonly string[];
 };
+
+/**
+ * Resolve the per-model compat efforts list for a discovered model.
+ *
+ * Priority:
+ * 1. AxonHub API-provided list (forward-compat for unreleased fields).
+ * 2. Family-table override for non-OpenAI families that need to bypass
+ *    OpenClaw's built-in OpenAI-only registry default.
+ * 3. Undefined → let OpenClaw transport handle it.
+ */
+function resolveSupportedReasoningEfforts(
+  modelId: string,
+  apiEntry: AxonhubModelEntry,
+): readonly string[] | undefined {
+  const fromApi = readApiReasoningEfforts(apiEntry);
+  if (fromApi) {
+    return fromApi;
+  }
+  const family = resolveAxonhubFamily(modelId);
+  return family?.supportedEffortsForCompat;
+}
 
 // --- AxonHub API fetch ---
 
@@ -231,6 +266,7 @@ async function fetchAxonhubModels(params: {
             cacheRead: m.pricing?.cache_read ?? 0,
             cacheWrite: m.pricing?.cache_write ?? 0,
           },
+          supportedReasoningEfforts: resolveSupportedReasoningEfforts(id, m),
         };
       })
       .filter((m): m is DiscoveredModel => m !== null);
@@ -253,6 +289,20 @@ function resolveApiKeyForCatalog(
   return resolveAxonhubConfigApiKey(config);
 }
 
+/**
+ * Build the optional `compat` block for a discovered model. Only includes
+ * `supportedReasoningEfforts` when set (otherwise OpenClaw transport defaults
+ * apply).
+ */
+function buildCatalogCompat(model: DiscoveredModel) {
+  if (!model.supportedReasoningEfforts || model.supportedReasoningEfforts.length === 0) {
+    return undefined;
+  }
+  return {
+    supportedReasoningEfforts: [...model.supportedReasoningEfforts],
+  };
+}
+
 // --- Plugin entry ---
 
 export default definePluginEntry({
@@ -271,13 +321,22 @@ export default definePluginEntry({
       const baseUrl = ctx.providerConfig?.baseUrl
         ?? (configuredBaseUrl ? configuredBaseUrl.replace(/\/+$/, "") : undefined)
         ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+      const family = resolveAxonhubFamily(ctx.modelId);
+      // ProviderRuntimeModel.compat uses pi-ai's strict OpenAICompletionsCompat
+      // which does not surface OpenClaw's `supportedReasoningEfforts` field —
+      // the catalog / augmentModelCatalog paths are the canonical place to set
+      // it. Resolved-dynamic models still benefit from OpenClaw's transport-
+      // layer auto-downgrade so xhigh requests on unknown families fall back
+      // to high gracefully.
       return {
         id: ctx.modelId,
         name: ctx.modelId,
         api: "openai-completions",
         provider: PROVIDER_ID,
         baseUrl,
-        reasoning: false,
+        // If we recognize the family, mark as reasoning-capable so the UI
+        // surfaces thinking levels. Otherwise stay conservative.
+        reasoning: family !== null,
         input: ["text"],
         cost: { ...AXONHUB_DEFAULT_COST },
         contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
@@ -381,15 +440,19 @@ export default definePluginEntry({
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
 
           const models = discovered.length > 0
-            ? discovered.map((m) => ({
-                id: m.id,
-                name: m.name,
-                reasoning: m.reasoning,
-                input: m.input,
-                cost: m.cost,
-                contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
-                maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
-              }))
+            ? discovered.map((m) => {
+                const compat = buildCatalogCompat(m);
+                return {
+                  id: m.id,
+                  name: m.name,
+                  reasoning: m.reasoning,
+                  input: m.input,
+                  cost: m.cost,
+                  contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+                  maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+                  ...(compat ? { compat } : {}),
+                };
+              })
             : [
                 // Minimal fallback when AxonHub is unreachable
                 {
@@ -423,16 +486,20 @@ export default definePluginEntry({
         if (apiKey) {
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
           if (discovered.length > 0) {
-            return discovered.map((m) => ({
-              provider: PROVIDER_ID,
-              id: m.id,
-              name: m.name,
-              contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
-              maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
-              reasoning: m.reasoning,
-              input: m.input,
-              cost: m.cost,
-            }));
+            return discovered.map((m) => {
+              const compat = buildCatalogCompat(m);
+              return {
+                provider: PROVIDER_ID,
+                id: m.id,
+                name: m.name,
+                contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+                maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+                reasoning: m.reasoning,
+                input: m.input,
+                cost: m.cost,
+                ...(compat ? { compat } : {}),
+              };
+            });
           }
         }
 
@@ -443,7 +510,7 @@ export default definePluginEntry({
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
       resolveThinkingProfile: ({ modelId, reasoning }) =>
         buildAxonhubThinkingProfile(modelId, reasoning),
-      supportsXHighThinking: ({ modelId }) => supportsXHighThinkingModel(modelId),
+      supportsXHighThinking: ({ modelId }) => supportsAxonhubXHighThinking(modelId),
       wrapStreamFn: (ctx) => {
         const deepseekWrapped = createDeepSeekV4AxonhubThinkingWrapper({
           streamFn: ctx.streamFn,
@@ -470,3 +537,11 @@ export default definePluginEntry({
     });
   },
 });
+
+// Re-export internals for backward-compat with consumers / tests that imported
+// the old prefix-list-based helpers.
+export {
+  isAxonhubDeepSeekV4ModelId as isDeepSeekV4ModelId,
+  normalizeAxonhubModelId,
+  supportsAxonhubXHighThinking as supportsXHighThinkingModel,
+};
