@@ -27,3 +27,36 @@
 - Re-ran validation after installing dependencies: `npm install`, `npm ci --ignore-scripts`, `npm run validate:manifest`, `npm run typecheck`, explicit package/lock/manifest metadata checks, `git diff --check`, and `npm pack --dry-run` passed.
 - `npm audit` reports 5 moderate vulnerabilities from OpenClaw 2026.4.29 transitive dev/peer dependencies; `npm audit fix --force` would downgrade OpenClaw to 2026.4.15, so it was intentionally not applied.
 - Removed generated `.claude/worktrees/` gitlinks from the staged commit and ignored local runtime directories.
+
+
+## Session 1: Restore Trellis tooling tracking; adopt selective-stage commit hygiene
+
+**Date**: 2026-05-04
+**Task**: Restore Trellis tooling tracking; adopt selective-stage commit hygiene
+**Branch**: `master`
+
+### Summary
+
+Reverted f5739b6's over-reach that untracked .claude/, .trellis/, AGENTS.md. Restored those paths to tracking and put .gitignore back to its prior content (node_modules / .claude/worktrees / *.tgz). Plugin functional code from f5739b6 (v1.0.7 family-table xhigh/max detection) is unchanged. Going forward commits should selectively stage plugin files instead of git add -A.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d1e451e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
