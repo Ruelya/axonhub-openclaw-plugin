@@ -6,18 +6,21 @@
 //
 // 1. Build the OpenClaw thinking-profile (UI levels list).
 // 2. Decide whether to inject `reasoning_effort: max` via wrapStreamFn.
-// 3. Optionally fill `compat.supportedReasoningEfforts` to override OpenClaw's
-//    built-in OpenAI family registry default for non-OpenAI families.
+// 3. Fill `compat.supportedReasoningEfforts` so OpenClaw's transport layer
+//    does not silently downgrade `xhigh`/`max` to `high`.
 //
-// Notes on coverage:
-// - OpenClaw's built-in OpenAI registry (`src/agents/openai-reasoning-effort.ts`)
-//   already handles `gpt-5*`, `gpt-5.x-codex`, `gpt-5.x-pro`, `o3`, `o4-mini`
-//   by id pattern. We still register OpenAI here so the UI/wrapStreamFn paths
-//   know about xhigh/max, but we leave `supportedEffortsForCompat` undefined
-//   so we don't double-define.
-// - For non-OpenAI families with xhigh support (Anthropic 4.7, DeepSeek V4,
-//   Gemini 3.x), we set `supportedEffortsForCompat` so OpenClaw's transport
-//   layer doesn't silently downgrade `xhigh → high`.
+// Why we set `supportedEffortsForCompat` for ALL families that support xhigh
+// or max (including OpenAI gpt-5/o3/o4-mini):
+// - OpenClaw's built-in OpenAI registry
+//   (`src/agents/openai-reasoning-effort.ts`) does NOT handle `o3` / `o4-mini`
+//   (they fall through to a generic `["low","medium","high"]` table) and its
+//   `OpenAIReasoningEffort` type has never included `"max"` at all. Relying
+//   on the built-in registry strips xhigh from o3/o4-mini and strips max
+//   from every OpenAI model.
+// - When `compat.supportedReasoningEfforts` is set on the model entry,
+//   OpenClaw's `readCompatReasoningEfforts` (which is checked FIRST, before
+//   the id-pattern table) accepts the list verbatim, so we get full
+//   xhigh+max coverage transport-side regardless of provider family.
 //
 // Forward-compat: if AxonHub later exposes per-model effort lists in
 // `capabilities.reasoning_efforts` (or similar), `readApiReasoningEfforts`
@@ -31,6 +34,7 @@ import {
 import type { ProviderThinkingProfile } from "openclaw/plugin-sdk/plugin-entry";
 
 const STANDARD_EFFORTS_WITH_XHIGH = ["low", "medium", "high", "xhigh"] as const;
+const STANDARD_EFFORTS_WITH_XHIGH_MAX = ["low", "medium", "high", "xhigh", "max"] as const;
 
 const BASE_LEVELS_OFF_TO_HIGH = [
   { id: "off" as const, label: "off", rank: 0 },
@@ -118,7 +122,7 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
       profile,
       supportsXHigh: profileSupportsLevel(profile, "xhigh"),
       supportsMax: profileSupportsLevel(profile, "max"),
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH],
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
     };
   }
 
@@ -134,15 +138,17 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
     };
   }
 
-  // OpenAI gpt-5.x / o3 / o4-mini — xhigh + max via wrapStreamFn
-  // OpenClaw's built-in OpenAI family registry already gates effort filtering
-  // by id pattern, so we deliberately do not set supportedEffortsForCompat.
+  // OpenAI gpt-5.x / o3 / o4-mini — xhigh + max via wrapStreamFn.
+  // We MUST set supportedEffortsForCompat: OpenClaw's built-in OpenAI registry
+  // is incomplete (no o3/o4-mini patterns; type union has no "max"), so without
+  // an explicit compat list, xhigh and max are silently downgraded.
   if (isOpenAiGpt5OrOSeriesId(normalized)) {
     return {
       family: "openai-gpt5-or-o-series",
       profile: PROFILE_OFF_TO_MAX,
       supportsXHigh: true,
       supportsMax: true,
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
     };
   }
 
@@ -153,7 +159,7 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
       profile: PROFILE_OFF_TO_MAX,
       supportsXHigh: true,
       supportsMax: true,
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH],
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
     };
   }
 

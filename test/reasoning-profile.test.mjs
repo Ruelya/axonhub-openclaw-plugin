@@ -103,21 +103,35 @@ assert.equal(familyTable.supportsAxonhubMaxThinking('ordinary-reasoning-model'),
 assert.equal(familyTable.resolveAxonhubFamily('plain-chat'), null);
 assert.equal(familyTable.resolveAxonhubFamily('MiniMax-M2.7'), null);
 
-// --- New: family resolution sets supportedEffortsForCompat for non-OpenAI families that need it ---
+// --- New: family resolution sets supportedEffortsForCompat for every family
+// that supports xhigh / max (including OpenAI — the built-in registry is
+// incomplete and would otherwise downgrade) ---
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('claude-opus-4-7').supportedEffortsForCompat,
-  ['low', 'medium', 'high', 'xhigh'],
+  ['low', 'medium', 'high', 'xhigh', 'max'],
 );
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('deepseek-v4-pro').supportedEffortsForCompat,
-  ['low', 'medium', 'high', 'xhigh'],
+  ['low', 'medium', 'high', 'xhigh', 'max'],
 );
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('gemini-3-flash-preview').supportedEffortsForCompat,
   ['low', 'medium', 'high', 'xhigh'],
 );
-// OpenAI gpt-5* defers to OpenClaw built-in registry — no override.
-assert.equal(familyTable.resolveAxonhubFamily('gpt-5.5').supportedEffortsForCompat, undefined);
+// OpenAI gpt-5* / o3 / o4-mini — must include max because OpenClaw's built-in
+// OpenAI registry has never known about "max" and lacks o3/o4-mini patterns.
+assert.deepEqual(
+  familyTable.resolveAxonhubFamily('gpt-5.5').supportedEffortsForCompat,
+  ['low', 'medium', 'high', 'xhigh', 'max'],
+);
+assert.deepEqual(
+  familyTable.resolveAxonhubFamily('o3').supportedEffortsForCompat,
+  ['low', 'medium', 'high', 'xhigh', 'max'],
+);
+assert.deepEqual(
+  familyTable.resolveAxonhubFamily('o4-mini').supportedEffortsForCompat,
+  ['low', 'medium', 'high', 'xhigh', 'max'],
+);
 
 // --- New: Forward-compat — readApiReasoningEfforts reads alias keys ---
 const apiEntryWithEfforts = {
