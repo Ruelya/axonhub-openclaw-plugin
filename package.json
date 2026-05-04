@@ -15,9 +15,11 @@
   "files": [
     "*.ts",
     "*.json",
-    "openclaw.plugin.json"
+    "openclaw.plugin.json",
+    "dist/**"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "validate:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('openclaw.plugin.json','utf8')); console.log('openclaw.plugin.json OK')\"",
     "test:reasoning-profile": "node test/reasoning-profile.test.mjs",
