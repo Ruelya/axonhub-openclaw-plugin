@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/prd.md", "reason": "MVP scope, decision, requirements, acceptance criteria"}
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/research/axonhub-backend-reasoning-capabilities.md", "reason": "AxonHub v0.9.38 API surface — only capabilities.{vision,tool_call,reasoning} bools exposed"}
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/research/openclaw-provider-plugin-patterns.md", "reason": "Family-table pattern from peer plugins; OpenClaw built-in xhigh→high downgrade; resolveClaudeThinkingProfile reuse; wrapStreamFn max-gating semantics"}
+{"file": ".trellis/tasks/05-01-fix-axonhub-reasoning-levels-xhigh-max/prd.md", "reason": "Prior task baseline (DeepSeek V4 + max wrapper) — must not regress"}
+{"file": "test/reasoning-profile.test.mjs", "reason": "Locked baseline assertions to preserve"}

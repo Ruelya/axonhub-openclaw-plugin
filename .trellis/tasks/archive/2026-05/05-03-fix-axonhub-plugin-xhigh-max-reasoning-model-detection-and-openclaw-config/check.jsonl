@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/prd.md", "reason": "Acceptance criteria and definition of done"}
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/research/openclaw-provider-plugin-patterns.md", "reason": "OpenClaw transport-level downgrade behavior — informs which assertions must hold"}
+{"file": ".trellis/tasks/05-03-fix-axonhub-plugin-xhigh-max-reasoning-model-detection-and-openclaw-config/research/axonhub-backend-reasoning-capabilities.md", "reason": "Live instance shape (23 models on http://localhost:8090) — informs end-to-end check"}
+{"file": "test/reasoning-profile.test.mjs", "reason": "Existing locked test — must remain green"}
