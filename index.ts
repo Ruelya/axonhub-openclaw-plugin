@@ -303,6 +303,32 @@ function buildCatalogCompat(model: DiscoveredModel) {
   };
 }
 
+/**
+ * Shape a discovered AxonHub model into the catalog-entry object that both
+ * `catalog.run` and `augmentModelCatalog` return. Centralized so the migration
+ * path in `auth.run` (which writes the same shape into stored config via
+ * `applyAxonhubConfig`) cannot drift. Return type is inferred so it stays
+ * structurally compatible with both `ModelDefinitionConfig` (catalog/cfg) and
+ * `ModelCatalogEntry` (augment, which subsets these fields).
+ */
+function buildAxonhubCatalogModelEntry(m: DiscoveredModel) {
+  const compat = buildCatalogCompat(m);
+  return {
+    id: m.id,
+    name: m.name,
+    reasoning: m.reasoning,
+    input: m.input,
+    cost: m.cost,
+    contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+    ...(compat ? { compat } : {}),
+  };
+}
+
+function buildAxonhubCatalogModels(discovered: DiscoveredModel[]) {
+  return discovered.map(buildAxonhubCatalogModelEntry);
+}
+
 // --- Plugin entry ---
 
 export default definePluginEntry({
@@ -413,10 +439,27 @@ export default definePluginEntry({
               ? `${PROVIDER_ID}/${defaultModelId}`
               : AXONHUB_DEFAULT_MODEL_REF;
 
-            // 4. Build auth result with config patch that includes apiKey
+            // 4. Build auth result with config patch that includes apiKey AND
+            //    a fresh catalog-shaped models[] (with `compat.supportedReasoningEfforts`
+            //    derived from the family table). Writing the models array here
+            //    is the migration path for users upgrading from <=1.0.7 whose
+            //    stored axonhub.models[] was captured before family-table compat
+            //    existed and therefore lacks the `compat` field — without this
+            //    rewrite, OpenClaw's directive validator
+            //    (buildConfiguredModelCatalog) only sees the base profile and
+            //    rejects /think xhigh / /think max even though the runtime
+            //    hook returns the right profile.
             const profileId = `${PROVIDER_ID}:default`;
             const credential = buildApiKeyCredential(PROVIDER_ID, apiKey);
-            const nextConfig = applyAxonhubConfig(ctx.config, baseUrl, apiKey);
+            const refreshedModels = discovered.length > 0
+              ? buildAxonhubCatalogModels(discovered)
+              : undefined;
+            const nextConfig = applyAxonhubConfig(
+              ctx.config,
+              baseUrl,
+              apiKey,
+              refreshedModels,
+            );
 
             return {
               profiles: [{ profileId, credential }],
@@ -440,19 +483,7 @@ export default definePluginEntry({
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
 
           const models = discovered.length > 0
-            ? discovered.map((m) => {
-                const compat = buildCatalogCompat(m);
-                return {
-                  id: m.id,
-                  name: m.name,
-                  reasoning: m.reasoning,
-                  input: m.input,
-                  cost: m.cost,
-                  contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
-                  maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
-                  ...(compat ? { compat } : {}),
-                };
-              })
+            ? discovered.map(buildAxonhubCatalogModelEntry)
             : [
                 // Minimal fallback when AxonHub is unreachable
                 {
@@ -486,20 +517,10 @@ export default definePluginEntry({
         if (apiKey) {
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
           if (discovered.length > 0) {
-            return discovered.map((m) => {
-              const compat = buildCatalogCompat(m);
-              return {
-                provider: PROVIDER_ID,
-                id: m.id,
-                name: m.name,
-                contextWindow: m.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
-                maxTokens: m.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
-                reasoning: m.reasoning,
-                input: m.input,
-                cost: m.cost,
-                ...(compat ? { compat } : {}),
-              };
-            });
+            return discovered.map((m) => ({
+              provider: PROVIDER_ID,
+              ...buildAxonhubCatalogModelEntry(m),
+            }));
           }
         }
 
