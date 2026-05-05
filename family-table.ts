@@ -34,7 +34,7 @@ import {
 import type { ProviderThinkingProfile } from "openclaw/plugin-sdk/plugin-entry";
 
 const STANDARD_EFFORTS_WITH_XHIGH = ["low", "medium", "high", "xhigh"] as const;
-const STANDARD_EFFORTS_WITH_XHIGH_MAX = ["low", "medium", "high", "xhigh", "max"] as const;
+const STANDARD_EFFORTS_WITH_MAX = ["low", "medium", "high", "xhigh", "max"] as const;
 
 const BASE_LEVELS_OFF_TO_HIGH = [
   { id: "off" as const, label: "off", rank: 0 },
@@ -114,41 +114,63 @@ function profileSupportsLevel(profile: ProviderThinkingProfile, levelId: string)
 export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | null {
   const normalized = normalizeAxonhubModelId(modelId);
 
-  // Anthropic Claude opus-4.7 / sonnet-4.7 — xhigh + adaptive + max
-  if (isClaudeOpus47ModelId(normalized)) {
-    const profile = resolveClaudeThinkingProfile(normalized);
+  // Anthropic Claude opus-4.7 / mythos — xhigh + adaptive + max.
+  // The SDK helper only recognises opus-4-7 prefixes; for mythos it returns
+  // the bare BASE_CLAUDE_THINKING_LEVELS, so we supply the full profile inline.
+  if (isClaudeOpus47ModelId(normalized) || normalized === "claude-mythos-preview") {
+    const resolved = resolveClaudeThinkingProfile(normalized);
+    const profile: ProviderThinkingProfile = profileSupportsLevel(resolved, "max")
+      ? resolved
+      : {
+          levels: [
+            ...BASE_LEVELS_OFF_TO_HIGH,
+            { id: "xhigh" as const, label: "xhigh", rank: 60 },
+            { id: "adaptive" as const, label: "adaptive", rank: 50 },
+            { id: "max" as const, label: "max", rank: 70 },
+          ],
+          defaultLevel: "off",
+        };
     return {
       family: "anthropic-claude-4.7",
       profile,
-      supportsXHigh: profileSupportsLevel(profile, "xhigh"),
-      supportsMax: profileSupportsLevel(profile, "max"),
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
+      supportsXHigh: true,
+      supportsMax: true,
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
     };
   }
 
-  // Anthropic Claude opus-4.6 / sonnet-4.6 — adaptive only (no xhigh, no max)
+  // Anthropic Claude opus-4.6 / sonnet-4.6 — adaptive + max, no xhigh.
+  // The SDK profile for 4.6 includes adaptive but not max; we append max
+  // manually because AxonHub's Anthropic transformer accepts it upstream.
   if (isClaudeAdaptiveThinkingDefaultModelId(normalized)) {
-    const profile = resolveClaudeThinkingProfile(normalized);
+    const baseProfile = resolveClaudeThinkingProfile(normalized);
+    const profile: ProviderThinkingProfile = {
+      ...baseProfile,
+      levels: [
+        ...baseProfile.levels,
+        { id: "max" as const, label: "max", rank: 70 },
+      ],
+    };
     return {
       family: "anthropic-claude-4.6",
       profile,
-      supportsXHigh: profileSupportsLevel(profile, "xhigh"),
-      supportsMax: profileSupportsLevel(profile, "max"),
-      // No compat override — profile lacks xhigh, so OpenClaw default is fine.
+      supportsXHigh: false,
+      supportsMax: true,
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
     };
   }
 
-  // OpenAI gpt-5.x / o3 / o4-mini — xhigh + max via wrapStreamFn.
-  // We MUST set supportedEffortsForCompat: OpenClaw's built-in OpenAI registry
-  // is incomplete (no o3/o4-mini patterns; type union has no "max"), so without
-  // an explicit compat list, xhigh and max are silently downgraded.
+  // OpenAI gpt-5.x / o3 / o4-mini — xhigh only.
+  // No upstream max support for any OpenAI-family model routed through
+  // AxonHub (as of 2026-05-05 the only models supporting max are Claude
+  // 4.6/4.7/mythos and DeepSeek V4).
   if (isOpenAiGpt5OrOSeriesId(normalized)) {
     return {
       family: "openai-gpt5-or-o-series",
-      profile: PROFILE_OFF_TO_MAX,
+      profile: PROFILE_OFF_TO_XHIGH,
       supportsXHigh: true,
-      supportsMax: true,
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
+      supportsMax: false,
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH],
     };
   }
 
@@ -159,7 +181,7 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
       profile: PROFILE_OFF_TO_MAX,
       supportsXHigh: true,
       supportsMax: true,
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_XHIGH_MAX],
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
     };
   }
 
