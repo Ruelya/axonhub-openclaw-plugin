@@ -1,13 +1,13 @@
 {
   "id": "axonhub",
   "activation": {
-    "onStartup": false,
+    "onStartup": true,
     "onProviders": ["axonhub"]
   },
   "enabledByDefault": false,
   "name": "AxonHub",
   "description": "AxonHub AI Gateway - Route requests to 100+ LLM providers",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "providers": ["axonhub"],
   "setup": {
     "providers": [
