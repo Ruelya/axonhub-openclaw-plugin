@@ -1,25 +1,28 @@
 {
   "name": "@ruelya/axonhub-openclaw-plugin",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "private": false,
   "description": "AxonHub AI Gateway provider plugin for OpenClaw - Route requests to 100+ LLM providers",
   "type": "module",
-  "main": "./index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.ts",
-      "import": "./index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "*.ts",
-    "*.json",
+    "dist/**",
     "openclaw.plugin.json",
-    "dist/**"
+    "package.json",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "validate:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('openclaw.plugin.json','utf8')); console.log('openclaw.plugin.json OK')\"",
     "test:reasoning-profile": "node test/reasoning-profile.test.mjs",
@@ -34,14 +37,14 @@
   },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ],
     "compat": {
       "pluginApi": ">=2026.4.29",
       "minGatewayVersion": "2026.4.29"
     },
     "build": {
-      "openclawVersion": "2026.4.29",
+      "openclawVersion": "2026.5.2",
       "pluginSdkVersion": "2026.4.29"
     }
   },
