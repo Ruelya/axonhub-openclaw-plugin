@@ -28,7 +28,6 @@ const AXONHUB_PROVIDER_API_KIND = "openai-completions";
 export function applyAxonhubConfig(
   config: OpenClawConfig,
   baseUrl?: string,
-  apiKey?: string,
   models?: ReadonlyArray<unknown>,
 ): OpenClawConfig {
   let modelsRoot = { ...config.models };
@@ -39,10 +38,6 @@ export function applyAxonhubConfig(
     ? `${baseUrl.replace(/\/+$/, "")}${AXONHUB_API_PATH}`
     : axonhubProvider.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
   axonhubProvider.baseUrl = resolvedBaseUrl;
-
-  if (apiKey) {
-    axonhubProvider.apiKey = apiKey;
-  }
 
   if (models) {
     // Cast through unknown because the SDK's ModelDefinitionConfig type is not
@@ -66,14 +61,6 @@ export function resolveAxonhubConfigBaseUrl(config: OpenClawConfig | undefined):
   if (!provider || typeof provider !== "object") return undefined;
   const baseUrl = (provider as Record<string, unknown>).baseUrl;
   return typeof baseUrl === "string" ? baseUrl : undefined;
-}
-
-export function resolveAxonhubConfigApiKey(config: OpenClawConfig | undefined): string | undefined {
-  if (!config) return undefined;
-  const provider = config.models?.providers?.[AXONHUB_PROVIDER_ID];
-  if (!provider || typeof provider !== "object") return undefined;
-  const apiKey = (provider as Record<string, unknown>).apiKey;
-  return typeof apiKey === "string" ? apiKey : undefined;
 }
 
 export { AXONHUB_DEFAULT_BASE_URL, AXONHUB_API_PATH };

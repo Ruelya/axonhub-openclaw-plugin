@@ -15,7 +15,12 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
   buildApiKeyCredential,
+  ensureApiKeyFromOptionEnvOrPrompt,
   normalizeApiKeyInput,
+  normalizeOptionalSecretInput,
+  validateApiKeyInput,
+  type SecretInput,
+  type SecretInputMode,
 } from "openclaw/plugin-sdk/provider-auth";
 import {
   buildProviderReplayFamilyHooks,
@@ -27,7 +32,6 @@ import {
   AXONHUB_DEFAULT_BASE_URL,
   AXONHUB_API_PATH,
   resolveAxonhubConfigBaseUrl,
-  resolveAxonhubConfigApiKey,
 } from "./onboard.js";
 import {
   AXONHUB_BASE_REASONING_PROFILE,
@@ -275,20 +279,6 @@ async function fetchAxonhubModels(params: {
   }
 }
 
-// --- Resolve API key from context (env + config, no credential store) ---
-
-function resolveApiKeyForCatalog(
-  config: OpenClawConfig | undefined,
-  env: NodeJS.ProcessEnv | undefined,
-): string | undefined {
-  // 1. Check environment variable
-  const envKey = env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
-  if (envKey) return envKey;
-
-  // 2. Check config (stored during auth flow)
-  return resolveAxonhubConfigApiKey(config);
-}
-
 /**
  * Build the optional `compat` block for a discovered model. Only includes
  * `supportedReasoningEfforts` when set (otherwise OpenClaw transport defaults
@@ -391,29 +381,33 @@ export default definePluginEntry({
             });
             const baseUrl = (baseUrlRaw ?? AXONHUB_DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
 
-            // 2. Resolve API key: check env var first, then prompt
-            const envApiKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
-            let apiKey: string;
-            if (envApiKey) {
-              const useEnv = await ctx.prompter.confirm({
-                message: `Use existing ${AXONHUB_API_KEY_ENV_VAR} from environment?`,
-                initialValue: true,
-              });
-              apiKey = useEnv
-                ? envApiKey
-                : ((await ctx.prompter.text({
-                    message: "Enter your AxonHub API key",
-                    placeholder: "ah-...",
-                    validate: (value) => (value?.trim() ? undefined : "Required"),
-                  }))?.trim() ?? "");
-            } else {
-              const apiKeyRaw = await ctx.prompter.text({
-                message: "Enter your AxonHub API key",
-                placeholder: "ah-...",
-                validate: (value) => (value?.trim() ? undefined : "Required"),
-              });
-              apiKey = normalizeApiKeyInput(apiKeyRaw?.trim() ?? "");
-            }
+            let capturedSecretInput: SecretInput | undefined;
+            let capturedMode: SecretInputMode | undefined;
+            const opts = ctx.opts as Record<string, unknown> | undefined;
+            const flagValue = normalizeOptionalSecretInput(opts?.axonhubApiKey);
+            const apiKey = await ensureApiKeyFromOptionEnvOrPrompt({
+              token: flagValue ?? normalizeOptionalSecretInput(ctx.opts?.token),
+              tokenProvider: flagValue
+                ? PROVIDER_ID
+                : normalizeOptionalSecretInput(ctx.opts?.tokenProvider),
+              secretInputMode:
+                ctx.allowSecretRefPrompt === false
+                  ? (ctx.secretInputMode ?? "plaintext")
+                  : ctx.secretInputMode,
+              config: ctx.config,
+              env: ctx.env,
+              expectedProviders: [PROVIDER_ID],
+              provider: PROVIDER_ID,
+              envLabel: AXONHUB_API_KEY_ENV_VAR,
+              promptMessage: "Enter your AxonHub API key",
+              normalize: normalizeApiKeyInput,
+              validate: validateApiKeyInput,
+              prompter: ctx.prompter,
+              setCredential: async (credentialInput, mode) => {
+                capturedSecretInput = credentialInput;
+                capturedMode = mode;
+              },
+            });
 
             if (!apiKey) {
               throw new Error("Missing API key input for AxonHub.");
@@ -439,8 +433,8 @@ export default definePluginEntry({
               ? `${PROVIDER_ID}/${defaultModelId}`
               : AXONHUB_DEFAULT_MODEL_REF;
 
-            // 4. Build auth result with config patch that includes apiKey AND
-            //    a fresh catalog-shaped models[] (with `compat.supportedReasoningEfforts`
+            // 4. Build auth result with a credential profile and a fresh
+            //    catalog-shaped models[] (with `compat.supportedReasoningEfforts`
             //    derived from the family table). Writing the models array here
             //    is the migration path for users upgrading from <=1.0.7 whose
             //    stored axonhub.models[] was captured before family-table compat
@@ -450,14 +444,23 @@ export default definePluginEntry({
             //    rejects /think xhigh / /think max even though the runtime
             //    hook returns the right profile.
             const profileId = `${PROVIDER_ID}:default`;
-            const credential = buildApiKeyCredential(PROVIDER_ID, apiKey);
+            const credential = buildApiKeyCredential(
+              PROVIDER_ID,
+              capturedSecretInput ?? apiKey,
+              undefined,
+              capturedMode
+                ? {
+                    secretInputMode: capturedMode,
+                    config: ctx.config,
+                  }
+                : undefined,
+            );
             const refreshedModels = discovered.length > 0
               ? buildAxonhubCatalogModels(discovered)
               : undefined;
             const nextConfig = applyAxonhubConfig(
               ctx.config,
               baseUrl,
-              apiKey,
               refreshedModels,
             );
 
@@ -512,7 +515,7 @@ export default definePluginEntry({
         const baseUrl = configuredBaseUrl
           ? configuredBaseUrl.replace(/\/+$/, "")
           : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-        const apiKey = resolveApiKeyForCatalog(ctx.config, ctx.env);
+        const apiKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
 
         if (apiKey) {
           const discovered = await fetchAxonhubModels({ baseUrl, apiKey });

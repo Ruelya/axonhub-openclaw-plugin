@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/guides/index.md", "reason": "General Trellis thinking-guide index for release verification of this provider plugin update."}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Verify metadata and compatibility fields stay in sync across package, lockfile, and manifest after the version bump."}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify package metadata, manifest schema, and provider runtime assumptions remain aligned after targeting OpenClaw 2026.4.29."}

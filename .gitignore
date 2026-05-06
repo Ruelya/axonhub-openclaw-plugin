@@ -1,4 +1,11 @@
 node_modules/
-.claude/worktrees/
+.claude/
+.trellis/
+AGENTS.md
 *.tgz
 dist/
+.aionrs/
+.codex/
+review-output.*
+__pycache__/
+*.pyc

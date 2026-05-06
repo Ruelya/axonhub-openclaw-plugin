@@ -1,2 +1,0 @@
-{"file":"index.ts","reason":"Adds provider thinking profile with xhigh/max levels for known supported AxonHub model families, including DeepSeek V4."}
-{"file":"index.ts","reason":"Adds DeepSeek V4 OpenAI-compatible thinking payload wrapper so xhigh/max requests map to upstream max reasoning effort."}

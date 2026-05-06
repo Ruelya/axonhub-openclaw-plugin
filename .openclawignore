@@ -1,0 +1,8 @@
+# Keep OpenClaw directory/source scans scoped to the plugin artifact.
+*
+!dist/
+!dist/**
+!openclaw.plugin.json
+!package.json
+!README.md
+!LICENSE
