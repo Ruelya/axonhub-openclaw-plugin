@@ -385,7 +385,7 @@ export default definePluginEntry({
             let capturedMode: SecretInputMode | undefined;
             const opts = ctx.opts as Record<string, unknown> | undefined;
             const flagValue = normalizeOptionalSecretInput(opts?.axonhubApiKey);
-            const apiKey = await ensureApiKeyFromOptionEnvOrPrompt({
+            const resolvedKey = await ensureApiKeyFromOptionEnvOrPrompt({
               token: flagValue ?? normalizeOptionalSecretInput(ctx.opts?.token),
               tokenProvider: flagValue
                 ? PROVIDER_ID
@@ -409,13 +409,13 @@ export default definePluginEntry({
               },
             });
 
-            if (!apiKey) {
+            if (!resolvedKey) {
               throw new Error("Missing API key input for AxonHub.");
             }
 
             // 3. Try to discover models from the AxonHub instance
             const apiBaseUrl = `${baseUrl}${AXONHUB_API_PATH}`;
-            const discovered = await fetchAxonhubModels({ baseUrl: apiBaseUrl, apiKey });
+            const discovered = await fetchAxonhubModels({ baseUrl: apiBaseUrl, apiKey: resolvedKey });
 
             // Pick a good default model: prefer known models, fallback to first discovered
             const PREFERRED_DEFAULTS = ["gpt-4o", "gpt-4", "claude-3-5-sonnet", "auto"];
@@ -446,7 +446,7 @@ export default definePluginEntry({
             const profileId = `${PROVIDER_ID}:default`;
             const credential = buildApiKeyCredential(
               PROVIDER_ID,
-              capturedSecretInput ?? apiKey,
+              capturedSecretInput ?? resolvedKey,
               undefined,
               capturedMode
                 ? {
@@ -475,15 +475,15 @@ export default definePluginEntry({
       catalog: {
         order: "simple",
         run: async (ctx: ProviderCatalogContext) => {
-          const apiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey;
-          if (!apiKey) {
+          const { apiKey: authKey } = ctx.resolveProviderApiKey(PROVIDER_ID);
+          if (!authKey) {
             return null;
           }
           const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
           const baseUrl = configuredBaseUrl
             ? configuredBaseUrl.replace(/\/+$/, "")
             : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-          const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
+          const discovered = await fetchAxonhubModels({ baseUrl, apiKey: authKey });
 
           const models = discovered.length > 0
             ? discovered.map(buildAxonhubCatalogModelEntry)
@@ -503,7 +503,7 @@ export default definePluginEntry({
           return {
             provider: {
               baseUrl,
-              apiKey,
+              apiKey: authKey,
               api: "openai-completions",
               models,
             },
@@ -515,10 +515,10 @@ export default definePluginEntry({
         const baseUrl = configuredBaseUrl
           ? configuredBaseUrl.replace(/\/+$/, "")
           : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-        const apiKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
+        const envAuthKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
 
-        if (apiKey) {
-          const discovered = await fetchAxonhubModels({ baseUrl, apiKey });
+        if (envAuthKey) {
+          const discovered = await fetchAxonhubModels({ baseUrl, apiKey: envAuthKey });
           if (discovered.length > 0) {
             return discovered.map((m) => ({
               provider: PROVIDER_ID,
