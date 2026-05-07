@@ -45,6 +45,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Prepare ClawPack output directory
+        run: mkdir -p ./clawpack-out
+
       - name: Pack ClawPack artifact
         run: npm pack --pack-destination ./clawpack-out
 
@@ -56,7 +59,11 @@ jobs:
           retention-days: 90
 
       - name: Publish to ClawHub
-        if: ${{ secrets.CLAWHUB_TOKEN != '' }}
-        run: npx clawhub publish --clawpack ./clawpack-out/*.tgz
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "CLAWHUB_TOKEN is not set; skipping ClawHub publish."
+            exit 0
+          fi
+          npx clawhub publish --clawpack ./clawpack-out/*.tgz
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
