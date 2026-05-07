@@ -39,6 +39,7 @@
     "extensions": [
       "./dist/index.js"
     ],
+    "providers": ["axonhub"],
     "compat": {
       "pluginApi": ">=2026.4.29",
       "minGatewayVersion": "2026.4.29"
