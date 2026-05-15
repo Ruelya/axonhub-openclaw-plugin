@@ -26,11 +26,7 @@
 // `capabilities.reasoning_efforts` (or similar), `readApiReasoningEfforts`
 // reads them and the catalog code prefers them over the family table.
 
-import {
-  isClaudeAdaptiveThinkingDefaultModelId,
-  isClaudeOpus47ModelId,
-  resolveClaudeThinkingProfile,
-} from "openclaw/plugin-sdk/provider-model-shared";
+import { resolveClaudeThinkingProfile } from "openclaw/plugin-sdk/provider-model-shared";
 import type { ProviderThinkingProfile } from "openclaw/plugin-sdk/plugin-entry";
 
 const STANDARD_EFFORTS_WITH_XHIGH = ["low", "medium", "high", "xhigh"] as const;
@@ -114,13 +110,22 @@ function profileSupportsLevel(profile: ProviderThinkingProfile, levelId: string)
 export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | null {
   const normalized = normalizeAxonhubModelId(modelId);
 
+  // Output-driven Claude family detection. The SDK's resolver is total: it
+  // returns a profile shape that already encodes the family — `max` only
+  // appears for Opus 4.7-class models, `adaptive` (without `max`) only for
+  // the Claude 4.6 adaptive family. We avoid copying upstream's prefix
+  // tables so new Claude models picked up by the SDK helper are detected
+  // automatically.
+  const claudeProfile = resolveClaudeThinkingProfile(normalized);
+  const claudeSupportsMax = profileSupportsLevel(claudeProfile, "max");
+  const claudeSupportsAdaptive = profileSupportsLevel(claudeProfile, "adaptive");
+
   // Anthropic Claude opus-4.7 / mythos — xhigh + adaptive + max.
-  // The SDK helper only recognises opus-4-7 prefixes; for mythos it returns
-  // the bare BASE_CLAUDE_THINKING_LEVELS, so we supply the full profile inline.
-  if (isClaudeOpus47ModelId(normalized) || normalized === "claude-mythos-preview") {
-    const resolved = resolveClaudeThinkingProfile(normalized);
-    const profile: ProviderThinkingProfile = profileSupportsLevel(resolved, "max")
-      ? resolved
+  // `claude-mythos-preview` is not recognised by the SDK helper, so we
+  // special-case it here and supply the full profile inline.
+  if (claudeSupportsMax || normalized === "claude-mythos-preview") {
+    const profile: ProviderThinkingProfile = claudeSupportsMax
+      ? claudeProfile
       : {
           levels: [
             ...BASE_LEVELS_OFF_TO_HIGH,
@@ -142,12 +147,11 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
   // Anthropic Claude opus-4.6 / sonnet-4.6 — adaptive + max, no xhigh.
   // The SDK profile for 4.6 includes adaptive but not max; we append max
   // manually because AxonHub's Anthropic transformer accepts it upstream.
-  if (isClaudeAdaptiveThinkingDefaultModelId(normalized)) {
-    const baseProfile = resolveClaudeThinkingProfile(normalized);
+  if (claudeSupportsAdaptive) {
     const profile: ProviderThinkingProfile = {
-      ...baseProfile,
+      ...claudeProfile,
       levels: [
-        ...baseProfile.levels,
+        ...claudeProfile.levels,
         { id: "max" as const, label: "max", rank: 70 },
       ],
     };
