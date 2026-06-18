@@ -4,6 +4,7 @@ import {
 } from "openclaw/plugin-sdk/provider-stream-shared";
 import {
   definePluginEntry,
+  type OpenClawPluginDefinition,
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
   type ProviderAuthContext,
@@ -318,7 +319,7 @@ function buildAxonhubCatalogModels(discovered: DiscoveredModel[]) {
 
 // --- Plugin entry ---
 
-export default definePluginEntry({
+const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
   id: PROVIDER_ID,
   name: "AxonHub",
   description: "AxonHub AI Gateway provider plugin - Route requests to 100+ LLM providers",
@@ -554,6 +555,8 @@ export default definePluginEntry({
     });
   },
 });
+
+export default axonhubPlugin;
 
 // Re-export internals for backward-compat with consumers / tests that imported
 // the old prefix-list-based helpers.
