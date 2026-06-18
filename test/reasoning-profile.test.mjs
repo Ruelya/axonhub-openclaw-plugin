@@ -25,7 +25,9 @@ const plugin = (await import(pathToFileURL(path.join(out, 'index.js')))).default
 const familyTable = await import(pathToFileURL(path.join(out, 'family-table.js')));
 
 let provider;
-plugin.register({ registerProvider(value) { provider = value; } });
+plugin.register({
+  registerProvider(value) { provider = value; },
+});
 assert(provider, 'provider should be registered');
 
 function profile(modelId, reasoning = true) {
@@ -123,7 +125,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('claude-opus-4-6').supportedEffortsForCompat,
-  ['low', 'medium', 'high', 'xhigh', 'max'],
+  ['low', 'medium', 'high', 'max'],
 );
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('deepseek-v4-pro').supportedEffortsForCompat,
@@ -183,13 +185,13 @@ assert.equal(
 const ordinary = profile('ordinary-reasoning-model', true);
 assert.equal(ordinary.defaultLevel, 'low', 'unknown reasoning models default to low');
 
-// --- New: Claude 4.6 keeps its own defaultLevel from the SDK helper ---
+// --- New: Claude 4.6 keeps its own defaultLevel from the local resolver ---
 const claude46 = profile('claude-opus-4-6', true);
-assert.equal(claude46.defaultLevel, 'adaptive', 'claude-opus-4-6 default is adaptive (from shared helper)');
+assert.equal(claude46.defaultLevel, 'adaptive', 'claude-opus-4-6 default is adaptive (from local resolver)');
 
-// --- New: Claude 4.7 keeps its own SDK-provided defaultLevel ('off') ---
+// --- New: Claude 4.7 keeps its own local-resolver defaultLevel ('off') ---
 const claude47 = profile('claude-opus-4-7', true);
-assert.equal(claude47.defaultLevel, 'off', 'claude-opus-4-7 default is off (from shared helper)');
+assert.equal(claude47.defaultLevel, 'off', 'claude-opus-4-7 default is off (from local resolver)');
 
 // --- New: gpt-5.5 still gets defaultLevel="low" (family profile has no defaultLevel) ---
 const gpt55 = profile('gpt-5.5', true);

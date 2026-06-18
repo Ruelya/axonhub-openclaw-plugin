@@ -26,11 +26,11 @@
 // `capabilities.reasoning_efforts` (or similar), `readApiReasoningEfforts`
 // reads them and the catalog code prefers them over the family table.
 
-import { resolveClaudeThinkingProfile } from "openclaw/plugin-sdk/provider-model-shared";
 import type { ProviderThinkingProfile } from "openclaw/plugin-sdk/plugin-entry";
 
 const STANDARD_EFFORTS_WITH_XHIGH = ["low", "medium", "high", "xhigh"] as const;
 const STANDARD_EFFORTS_WITH_MAX = ["low", "medium", "high", "xhigh", "max"] as const;
+const STANDARD_EFFORTS_WITH_MAX_NO_XHIGH = ["low", "medium", "high", "max"] as const;
 
 const BASE_LEVELS_OFF_TO_HIGH = [
   { id: "off" as const, label: "off", rank: 0 },
@@ -58,6 +58,106 @@ const PROFILE_OFF_TO_XHIGH: ProviderThinkingProfile = {
 const PROFILE_BASE_ONLY: ProviderThinkingProfile = {
   levels: [...BASE_LEVELS_OFF_TO_HIGH],
 };
+
+const BASE_CLAUDE_THINKING_LEVELS = [
+  { id: "off" as const, label: "off", rank: 0 },
+  { id: "minimal" as const, label: "minimal", rank: 10 },
+  { id: "low" as const, label: "low", rank: 20 },
+  { id: "medium" as const, label: "medium", rank: 30 },
+  { id: "high" as const, label: "high", rank: 40 },
+];
+
+type ClaudeModelRef = {
+  id?: string;
+  params?: Record<string, unknown>;
+};
+
+function normalizeClaudeModelId(modelId?: string): string {
+  const normalized = modelId?.trim().toLowerCase() ?? "";
+  const unprefixed = normalized.startsWith("anthropic/")
+    ? normalized.slice("anthropic/".length)
+    : normalized;
+  return unprefixed.replace(/[._\s]+/g, "-");
+}
+
+function resolveClaudeModelIdentity(ref: ClaudeModelRef): string {
+  const configuredCanonicalModelId =
+    typeof ref.params?.canonicalModelId === "string" ? ref.params.canonicalModelId : undefined;
+  const normalized = normalizeClaudeModelId(configuredCanonicalModelId ?? ref.id);
+  const match = /(?:^|[-/])claude-/.exec(normalized);
+  return match
+    ? normalized.slice((match.index ?? 0) + (match[0].startsWith("claude-") ? 0 : 1))
+    : normalized;
+}
+
+function resolveClaudeFable5ModelIdentity(ref: ClaudeModelRef): string | undefined {
+  const normalized = resolveClaudeModelIdentity(ref);
+  const match = /(?:^|-)claude-fable-5(?=$|[^a-z0-9])/.exec(normalized);
+  if (!match) {
+    return undefined;
+  }
+  return normalized.slice((match.index ?? 0) + (match[0].startsWith("-") ? 1 : 0));
+}
+
+function supportsClaudeAdaptiveThinking(ref: ClaudeModelRef): boolean {
+  const modelId = resolveClaudeModelIdentity(ref);
+  return /(?:^|-)claude-(?:fable-5|mythos-preview|opus-4-(?:6|7|8)|sonnet-4-6)(?=$|[^a-z0-9])/.test(
+    modelId,
+  );
+}
+
+function supportsClaudeNativeXhighEffort(ref: ClaudeModelRef): boolean {
+  const modelId = resolveClaudeModelIdentity(ref);
+  return /(?:^|-)claude-(?:fable-5|opus-4-(?:7|8))(?=$|[^a-z0-9])/.test(modelId);
+}
+
+function isClaudeAdaptiveThinkingDefaultModelId(modelId: string): boolean {
+  const ref = { id: modelId };
+  return supportsClaudeAdaptiveThinking(ref) && !supportsClaudeNativeXhighEffort(ref);
+}
+
+/** Plugin-owned Claude profile resolver (mirrors OpenClaw llm-core contracts). */
+function resolveAxonhubClaudeThinkingProfile(
+  modelId: string,
+  params?: Record<string, unknown>,
+  options?: { includeNativeMax?: boolean },
+): ProviderThinkingProfile {
+  const ref = { id: modelId, params };
+  const canonicalModelId = resolveClaudeModelIdentity(ref);
+  if (resolveClaudeFable5ModelIdentity(ref)) {
+    return {
+      levels: [
+        ...BASE_CLAUDE_THINKING_LEVELS,
+        { id: "xhigh" as const, label: "xhigh", rank: 60 },
+        { id: "adaptive" as const, label: "adaptive", rank: 50 },
+        { id: "max" as const, label: "max", rank: 70 },
+      ],
+      defaultLevel: "high",
+    };
+  }
+  if (supportsClaudeNativeXhighEffort(ref)) {
+    return {
+      levels: [
+        ...BASE_CLAUDE_THINKING_LEVELS,
+        { id: "xhigh" as const, label: "xhigh", rank: 60 },
+        { id: "adaptive" as const, label: "adaptive", rank: 50 },
+        { id: "max" as const, label: "max", rank: 70 },
+      ],
+      defaultLevel: "off",
+    };
+  }
+  if (isClaudeAdaptiveThinkingDefaultModelId(canonicalModelId)) {
+    return {
+      levels: [
+        ...BASE_CLAUDE_THINKING_LEVELS,
+        { id: "adaptive" as const, label: "adaptive", rank: 50 },
+        ...(options?.includeNativeMax ? [{ id: "max" as const, label: "max", rank: 70 }] : []),
+      ],
+      defaultLevel: "adaptive",
+    };
+  }
+  return { levels: [...BASE_CLAUDE_THINKING_LEVELS] };
+}
 
 const AXONHUB_DEEPSEEK_V4_MODEL_IDS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
 
@@ -110,19 +210,15 @@ function profileSupportsLevel(profile: ProviderThinkingProfile, levelId: string)
 export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | null {
   const normalized = normalizeAxonhubModelId(modelId);
 
-  // Output-driven Claude family detection. The SDK's resolver is total: it
-  // returns a profile shape that already encodes the family — `max` only
-  // appears for Opus 4.7-class models, `adaptive` (without `max`) only for
-  // the Claude 4.6 adaptive family. We avoid copying upstream's prefix
-  // tables so new Claude models picked up by the SDK helper are detected
-  // automatically.
-  const claudeProfile = resolveClaudeThinkingProfile(normalized);
+  // Output-driven Claude family detection using plugin-owned llm-core-style
+  // contracts instead of the deprecated provider-owned SDK helper.
+  const claudeProfile = resolveAxonhubClaudeThinkingProfile(normalized);
   const claudeSupportsMax = profileSupportsLevel(claudeProfile, "max");
   const claudeSupportsAdaptive = profileSupportsLevel(claudeProfile, "adaptive");
 
   // Anthropic Claude opus-4.7 / mythos — xhigh + adaptive + max.
-  // `claude-mythos-preview` is not recognised by the SDK helper, so we
-  // special-case it here and supply the full profile inline.
+  // `claude-mythos-preview` is handled via adaptive-thinking detection; keep
+  // the inline full profile when max is not inferred from the resolver.
   if (claudeSupportsMax || normalized === "claude-mythos-preview") {
     const profile: ProviderThinkingProfile = claudeSupportsMax
       ? claudeProfile
@@ -145,7 +241,7 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
   }
 
   // Anthropic Claude opus-4.6 / sonnet-4.6 — adaptive + max, no xhigh.
-  // The SDK profile for 4.6 includes adaptive but not max; we append max
+  // The Claude 4.6 profile includes adaptive but not max; we append max
   // manually because AxonHub's Anthropic transformer accepts it upstream.
   if (claudeSupportsAdaptive) {
     const profile: ProviderThinkingProfile = {
@@ -160,7 +256,7 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
       profile,
       supportsXHigh: false,
       supportsMax: true,
-      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX_NO_XHIGH],
     };
   }
 

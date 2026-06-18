@@ -1,6 +1,6 @@
 {
   "name": "@ruelya/axonhub-openclaw-plugin",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "private": false,
   "description": "AxonHub AI Gateway provider plugin for OpenClaw - Route requests to 100+ LLM providers",
   "type": "module",
@@ -29,7 +29,7 @@
     "test:e2e": "node test/family-table-e2e.test.mjs"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.5.12"
+    "openclaw": ">=2026.6.8"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -43,12 +43,12 @@
       "axonhub"
     ],
     "compat": {
-      "pluginApi": ">=2026.5.12",
-      "minGatewayVersion": "2026.5.12"
+      "pluginApi": ">=2026.6.8",
+      "minGatewayVersion": "2026.6.8"
     },
     "build": {
-      "openclawVersion": "2026.5.12",
-      "pluginSdkVersion": "2026.5.12"
+      "openclawVersion": "2026.6.8",
+      "pluginSdkVersion": "2026.6.8"
     }
   },
   "keywords": [

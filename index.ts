@@ -22,10 +22,7 @@ import {
   type SecretInput,
   type SecretInputMode,
 } from "openclaw/plugin-sdk/provider-auth";
-import {
-  buildProviderReplayFamilyHooks,
-  DEFAULT_CONTEXT_TOKENS,
-} from "openclaw/plugin-sdk/provider-model-shared";
+import { buildProviderReplayFamilyHooks } from "openclaw/plugin-sdk/provider-model-shared";
 import {
   applyAxonhubConfig,
   AXONHUB_DEFAULT_MODEL_REF,
@@ -338,25 +335,21 @@ export default definePluginEntry({
         ?? (configuredBaseUrl ? configuredBaseUrl.replace(/\/+$/, "") : undefined)
         ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
       const family = resolveAxonhubFamily(ctx.modelId);
-      // ProviderRuntimeModel.compat uses pi-ai's strict OpenAICompletionsCompat
-      // which does not surface OpenClaw's `supportedReasoningEfforts` field —
-      // the catalog / augmentModelCatalog paths are the canonical place to set
-      // it. Resolved-dynamic models still benefit from OpenClaw's transport-
-      // layer auto-downgrade so xhigh requests on unknown families fall back
-      // to high gracefully.
+      const dynamicCompat = family?.supportedEffortsForCompat?.length
+        ? { supportedReasoningEfforts: [...family.supportedEffortsForCompat] }
+        : undefined;
       return {
         id: ctx.modelId,
         name: ctx.modelId,
         api: "openai-completions",
         provider: PROVIDER_ID,
         baseUrl,
-        // If we recognize the family, mark as reasoning-capable so the UI
-        // surfaces thinking levels. Otherwise stay conservative.
         reasoning: family !== null,
         input: ["text"],
         cost: { ...AXONHUB_DEFAULT_COST },
         contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
         maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
+        ...(dynamicCompat ? { compat: dynamicCompat } : {}),
       };
     }
 
