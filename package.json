@@ -25,8 +25,19 @@
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "validate:manifest": "node -e \"JSON.parse(require('node:fs').readFileSync('openclaw.plugin.json','utf8')); console.log('openclaw.plugin.json OK')\"",
+    "sync:model-metadata": "node scripts/sync-model-metadata.mjs",
+    "check:model-metadata": "node scripts/sync-model-metadata.mjs --check",
     "test:reasoning-profile": "node test/reasoning-profile.test.mjs",
-    "test:e2e": "node test/family-table-e2e.test.mjs"
+    "test:model-routing": "node test/model-routing.test.mjs",
+    "test:model-sync": "node test/model-sync.test.mjs",
+    "test:codex-runtime": "node test/codex-runtime.test.mjs",
+    "test:codex-toml": "node test/codex-toml.test.mjs",
+    "test:codex-provider-id": "node test/codex-provider-id.test.mjs",
+    "test:codex-auth-helper": "node test/codex-auth-helper.test.mjs",
+    "test:codex-bridge": "node test/codex-bridge.test.mjs",
+    "test:e2e": "node test/family-table-e2e.test.mjs",
+    "test:all": "node --test test/*.test.mjs",
+    "test": "node --test test/model-routing.test.mjs test/reasoning-profile.test.mjs test/model-sync.test.mjs test/codex-runtime.test.mjs test/codex-provider-id.test.mjs test/codex-toml.test.mjs test/codex-auth-helper.test.mjs test/codex-bridge.test.mjs test/family-table-e2e.test.mjs"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.8"

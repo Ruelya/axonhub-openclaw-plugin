@@ -43,7 +43,7 @@ if (models.length === 0) {
 
 const repo = process.cwd();
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'axonhub-plugin-e2e-'));
-for (const file of ['index.ts', 'onboard.ts', 'provider-catalog.ts', 'family-table.ts']) {
+for (const file of ['index.ts', 'onboard.ts', 'provider-catalog.ts', 'cli.ts', 'family-table.ts']) {
   const source = fs.readFileSync(path.join(repo, file), 'utf8');
   const js = ts.transpileModule(source, {
     compilerOptions: {

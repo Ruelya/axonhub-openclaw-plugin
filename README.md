@@ -45,6 +45,53 @@ openclaw onboard --axonhub-api-key <your-api-key>
 | API Key | Your AxonHub API key |
 | Base URL | AxonHub instance URL (default: `http://localhost:8090`) |
 
+## Model synchronization
+
+There are three distinct synchronization concerns. They operate independently
+and should not be confused:
+
+1. **AxonHub channel-model sync (server-side).** AxonHub itself can refresh the
+   list of models each upstream channel supports about once an hour when a
+   channel has `auto_sync_supported_models` enabled. This happens entirely
+   inside your AxonHub instance; the plugin neither controls nor replaces it.
+
+2. **Plugin instance-cache refresh (client-side).** The plugin caches the set of
+   models your API key can currently see (`/v1/models`) with a bounded TTL
+   (default one hour) and a credential-scoped cache. The cache is refreshed
+   automatically on catalog access and is used by onboarding, catalog
+   discovery, and dynamic model resolution. You can force a refresh and inspect
+   the cache explicitly:
+
+   ```bash
+   # Force-refresh and print added / removed / changed model ids
+   openclaw axonhub models sync
+
+   # Report cache freshness, source URL, and model count
+   openclaw axonhub models status
+
+   # Machine-readable output; scope to an agent / auth profile
+   openclaw axonhub models sync --json --agent <path> --profile <id>
+   ```
+
+   Output is deterministic and never prints your API key.
+
+3. **Generated enrichment-metadata sync (release-time).** The plugin ships a
+   small, deterministic metadata artifact (`model-metadata.generated.ts`) that
+   maps model families to the correct AxonHub protocol endpoint
+   (Gemini / Anthropic / OpenAI Responses / OpenAI Chat Completions) and to
+   reasoning-effort hints. It is generated from a curated, reviewed source
+   snapshot — never fetched at runtime — so releases stay reproducible.
+   Maintainers regenerate it with:
+
+   ```bash
+   npm run sync:model-metadata     # regenerate from the curated source
+   npm run check:model-metadata    # fail if regeneration would change output
+   ```
+
+   A scheduled GitHub workflow refreshes advisory reasoning hints from the
+   pinned upstream catalog and opens a reviewable pull request only when the
+   generated artifact actually changes.
+
 ## License
 
 MIT

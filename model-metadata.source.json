@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://models.dev/api.json",
+    "note": "Pinned upstream model-catalog endpoint. This snapshot is the reviewed, curated source of truth for the plugin's protocol/reasoning enrichment index. `npm run sync:model-metadata` transforms it deterministically into model-metadata.generated.ts; it never fetches at build/runtime. The scheduled workflow runs `--fetch` to refresh this snapshot from the pinned URL and opens a reviewable PR when upstream drifts. Curated protocol-family decisions and any not-yet-upstream models are retained here on purpose."
+  },
+  "ownerProtocolFamilies": {
+    "anthropic": "anthropic",
+    "gemini": "gemini",
+    "google": "gemini",
+    "google-vertex": "gemini"
+  },
+  "ownerAliases": {
+    "alibaba-cn": "alibaba",
+    "google-vertex": "google",
+    "moonshot": "moonshotai",
+    "moonshotai-cn": "moonshotai",
+    "stepfun-ai": "stepfun",
+    "zhipuai": "zai"
+  },
+  "records": [
+    {
+      "id": "claude-mythos-preview",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "claude-opus-4-6",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "max"]
+    },
+    {
+      "id": "claude-opus-4-7",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "max"]
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "owners": ["deepseek"],
+      "protocolFamily": "openai-completions",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "owners": ["deepseek"],
+      "protocolFamily": "openai-completions",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    }
+  ]
+}

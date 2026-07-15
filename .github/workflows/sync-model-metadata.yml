@@ -1,0 +1,80 @@
+name: Sync model metadata
+
+# Refreshes the generated protocol/reasoning enrichment artifact from the pinned
+# upstream model catalog. This is the "generated enrichment-metadata sync" concern
+# only. It does NOT touch AxonHub's own hourly channel-model sync and does NOT
+# touch any per-instance model cache (those are runtime concerns).
+#
+# The job regenerates, validates, runs tests, and opens a reviewable PR ONLY when
+# the generated artifact actually changes. It never commits instance-specific
+# data, credentials, or nondeterministic output.
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC. Upstream metadata drifts slowly; a weekly cadence
+    # keeps review noise low while still catching new models/efforts.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Refresh curated source from pinned upstream
+        run: npm run sync:model-metadata -- --fetch
+
+      - name: Verify generated artifact matches source
+        run: npm run check:model-metadata
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- model-metadata.source.json model-metadata.generated.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open reviewable PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/sync-model-metadata
+          title: "chore: sync model enrichment metadata from upstream"
+          commit-message: "chore: sync model enrichment metadata from upstream"
+          body: |
+            Automated refresh of the generated protocol/reasoning enrichment
+            artifact from the pinned upstream model catalog.
+
+            This PR was opened only because the generated artifact changed. Review
+            the diff in `model-metadata.source.json` and `model-metadata.generated.ts`
+            before merging. No instance-specific data, credentials, or timestamps
+            are included.
+          add-paths: |
+            model-metadata.source.json
+            model-metadata.generated.ts
+          delete-branch: true

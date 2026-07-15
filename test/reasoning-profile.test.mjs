@@ -7,7 +7,24 @@ import ts from 'typescript';
 
 const repo = process.cwd();
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'axonhub-plugin-test-'));
-for (const file of ['index.ts', 'onboard.ts', 'provider-catalog.ts', 'family-table.ts']) {
+for (const file of [
+  'url-helpers.ts',
+  'model-types.ts',
+  'model-metadata.generated.ts',
+  'family-table.ts',
+  'model-metadata.ts',
+  'model-sync.ts',
+  'onboard.ts',
+  'provider-catalog.ts',
+  'cli.ts',
+  'codex-runtime.ts',
+  'codex-provider-id.ts',
+  'codex-home.ts',
+  'codex-toml.ts',
+  'codex-auth-helper.ts',
+  'codex-bridge.ts',
+  'index.ts',
+]) {
   const source = fs.readFileSync(path.join(repo, file), 'utf8');
   const js = ts.transpileModule(source, {
     compilerOptions: {
@@ -27,6 +44,10 @@ const familyTable = await import(pathToFileURL(path.join(out, 'family-table.js')
 let provider;
 plugin.register({
   registerProvider(value) { provider = value; },
+  registerModelCatalogProvider() {},
+  registerCli() {},
+  registerHook() {},
+  on() {},
 });
 assert(provider, 'provider should be registered');
 

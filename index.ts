@@ -6,12 +6,14 @@ import {
   definePluginEntry,
   type OpenClawPluginDefinition,
   type ProviderResolveDynamicModelContext,
+  type ProviderPrepareDynamicModelContext,
   type ProviderRuntimeModel,
   type ProviderAuthContext,
   type ProviderAuthResult,
-  type ProviderAugmentModelCatalogContext,
   type ProviderCatalogContext,
   type ProviderThinkingProfile,
+  type UnifiedModelCatalogProviderContext,
+  type UnifiedModelCatalogEntry,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
@@ -24,6 +26,7 @@ import {
   type SecretInputMode,
 } from "openclaw/plugin-sdk/provider-auth";
 import { buildProviderReplayFamilyHooks } from "openclaw/plugin-sdk/provider-model-shared";
+import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
 import {
   applyAxonhubConfig,
   AXONHUB_DEFAULT_MODEL_REF,
@@ -35,11 +38,21 @@ import {
   AXONHUB_BASE_REASONING_PROFILE,
   isAxonhubDeepSeekV4ModelId,
   normalizeAxonhubModelId,
-  readApiReasoningEfforts,
   resolveAxonhubFamily,
   supportsAxonhubMaxThinking,
   supportsAxonhubXHighThinking,
 } from "./family-table.js";
+import { enrichModel } from "./model-metadata.js";
+import type { DiscoveredModel, EnrichedModel } from "./model-types.js";
+import { findCachedEnrichedModel, syncAxonhubModels } from "./model-sync.js";
+import { registerAxonhubCliCommands } from "./cli.js";
+import {
+  getAxonhubOpenAIEndpoint,
+  normalizeAxonhubInstanceRoot,
+} from "./url-helpers.js";
+import { registerCodexBridge } from "./codex-bridge.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const PROVIDER_ID = "axonhub";
 const AXONHUB_DEFAULT_MAX_TOKENS = 16384;
@@ -130,155 +143,8 @@ function createOpenAICompatibleMaxThinkingWrapper(ctx: {
   });
 }
 
-// --- AxonHub API types for /v1/models?include=... response ---
-
-type AxonhubCapabilities = {
-  vision?: boolean;
-  tool_call?: boolean;
-  reasoning?: boolean;
-  // Forward-compat: AxonHub v0.9.38 doesn't expose any of these, but if a
-  // future version adds them, the plugin reads them via readApiReasoningEfforts.
-  reasoning_efforts?: string[];
-  reasoning_effort_levels?: string[];
-  effort_levels?: string[];
-  reasoning_levels?: string[];
-};
-
-type AxonhubPricing = {
-  input?: number;
-  output?: number;
-  cache_read?: number;
-  cache_write?: number;
-  unit?: string;
-  currency?: string;
-};
-
-type AxonhubModelEntry = {
-  id?: string;
-  object?: string;
-  created?: number;
-  owned_by?: string;
-  name?: string;
-  description?: string;
-  context_length?: number;
-  max_output_tokens?: number;
-  capabilities?: AxonhubCapabilities;
-  pricing?: AxonhubPricing;
-  type?: string;
-  icon?: string;
-};
-
-type AxonhubModelsResponse = {
-  object?: string;
-  data?: AxonhubModelEntry[];
-};
-
-// --- Model types ---
-
-type DiscoveredModel = {
-  id: string;
-  name: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  reasoning: boolean;
-  vision: boolean;
-  input: Array<"text" | "image">;
-  cost: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-  };
-  /**
-   * Per-model `compat.supportedReasoningEfforts` to surface in the catalog.
-   * Computed from the API response (forward-compat) or the family table.
-   * Undefined when neither source has an opinion (lets OpenClaw transport
-   * auto-detect via id pattern + auto-downgrade).
-   */
-  supportedReasoningEfforts?: readonly string[];
-};
-
 /**
- * Resolve the per-model compat efforts list for a discovered model.
- *
- * Priority:
- * 1. AxonHub API-provided list (forward-compat for unreleased fields).
- * 2. Family-table override for non-OpenAI families that need to bypass
- *    OpenClaw's built-in OpenAI-only registry default.
- * 3. Undefined → let OpenClaw transport handle it.
- */
-function resolveSupportedReasoningEfforts(
-  modelId: string,
-  apiEntry: AxonhubModelEntry,
-): readonly string[] | undefined {
-  const fromApi = readApiReasoningEfforts(apiEntry);
-  if (fromApi) {
-    return fromApi;
-  }
-  const family = resolveAxonhubFamily(modelId);
-  return family?.supportedEffortsForCompat;
-}
-
-// --- AxonHub API fetch ---
-
-async function fetchAxonhubModels(params: {
-  baseUrl: string;
-  apiKey: string;
-  timeoutMs?: number;
-}): Promise<DiscoveredModel[]> {
-  const baseUrl = params.baseUrl.replace(/\/+$/, "");
-  const url = `${baseUrl}/models?include=name,capabilities,context_length,max_output_tokens,pricing,type`;
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${params.apiKey}`,
-      },
-      signal: AbortSignal.timeout(params.timeoutMs ?? 5000),
-    });
-    if (!response.ok) {
-      return [];
-    }
-    const data = (await response.json()) as AxonhubModelsResponse;
-    const models = Array.isArray(data.data) ? data.data : [];
-    return models
-      .map((m): DiscoveredModel | null => {
-        const id = typeof m.id === "string" ? m.id.trim() : "";
-        if (!id) return null;
-        // Only include chat-type models
-        if (m.type && m.type !== "chat") return null;
-
-        const hasVision = m.capabilities?.vision === true;
-        return {
-          id,
-          name: m.name?.trim() || id,
-          contextWindow:
-            typeof m.context_length === "number" && m.context_length > 0
-              ? m.context_length
-              : undefined,
-          maxTokens:
-            typeof m.max_output_tokens === "number" && m.max_output_tokens > 0
-              ? m.max_output_tokens
-              : undefined,
-          reasoning: m.capabilities?.reasoning === true,
-          vision: hasVision,
-          input: hasVision ? ["text", "image"] : ["text"],
-          cost: {
-            input: m.pricing?.input ?? 0,
-            output: m.pricing?.output ?? 0,
-            cacheRead: m.pricing?.cache_read ?? 0,
-            cacheWrite: m.pricing?.cache_write ?? 0,
-          },
-          supportedReasoningEfforts: resolveSupportedReasoningEfforts(id, m),
-        };
-      })
-      .filter((m): m is DiscoveredModel => m !== null);
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Build the optional `compat` block for a discovered model. Only includes
+ * Build the optional `compat` block for a model. Only includes
  * `supportedReasoningEfforts` when set (otherwise OpenClaw transport defaults
  * apply).
  */
@@ -292,18 +158,23 @@ function buildCatalogCompat(model: DiscoveredModel) {
 }
 
 /**
- * Shape a discovered AxonHub model into the catalog-entry object that both
- * `catalog.run` and `augmentModelCatalog` return. Centralized so the migration
- * path in `auth.run` (which writes the same shape into stored config via
- * `applyAxonhubConfig`) cannot drift. Return type is inferred so it stays
- * structurally compatible with both `ModelDefinitionConfig` (catalog/cfg) and
- * `ModelCatalogEntry` (augment, which subsets these fields).
+ * Shape an enriched AxonHub model into the catalog-entry object that both
+ * `catalog.run` and the stored-config migration path in `auth.run` (via
+ * `applyAxonhubConfig`) return. Centralized so those two paths cannot drift.
+ *
+ * The per-model `api` and `baseUrl` come from `EnrichedModel`, so Gemini,
+ * Anthropic, OpenAI Responses, and OpenAI Chat Completions each route to the
+ * correct AxonHub protocol endpoint instead of a single hard-coded
+ * `openai-completions` transport. Return type is inferred so it stays
+ * structurally compatible with `ModelDefinitionConfig`.
  */
-function buildAxonhubCatalogModelEntry(m: DiscoveredModel) {
+function buildAxonhubCatalogModelEntry(m: EnrichedModel) {
   const compat = buildCatalogCompat(m);
   return {
     id: m.id,
     name: m.name,
+    api: m.api,
+    baseUrl: m.baseUrl,
     reasoning: m.reasoning,
     input: m.input,
     cost: m.cost,
@@ -313,8 +184,19 @@ function buildAxonhubCatalogModelEntry(m: DiscoveredModel) {
   };
 }
 
-function buildAxonhubCatalogModels(discovered: DiscoveredModel[]) {
-  return discovered.map(buildAxonhubCatalogModelEntry);
+function buildAxonhubCatalogModels(enriched: readonly EnrichedModel[]) {
+  return enriched.map(buildAxonhubCatalogModelEntry);
+}
+
+/**
+ * Resolve the configured AxonHub instance root (no `/v1` suffix) from config,
+ * falling back to the default instance. Used to derive credential-scoped cache
+ * identity and per-protocol endpoints.
+ */
+function resolveAxonhubInstanceRoot(config: OpenClawConfig | undefined): string {
+  const configuredBaseUrl = resolveAxonhubConfigBaseUrl(config);
+  const raw = configuredBaseUrl ?? AXONHUB_DEFAULT_BASE_URL;
+  return normalizeAxonhubInstanceRoot(raw);
 }
 
 // --- Plugin entry ---
@@ -328,30 +210,100 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
       family: "openai-compatible",
     });
 
+    /**
+     * Build a runtime model from an already-enriched record. Used when a warm
+     * cache entry exists (protocol family, api, and baseUrl are already
+     * resolved).
+     */
+    function runtimeModelFromEnriched(
+      enriched: EnrichedModel,
+    ): ProviderRuntimeModel {
+      const compat = buildCatalogCompat(enriched);
+      return {
+        id: enriched.id,
+        name: enriched.name,
+        api: enriched.api,
+        provider: PROVIDER_ID,
+        baseUrl: enriched.baseUrl,
+        reasoning: enriched.reasoning,
+        input: enriched.input,
+        cost: { ...enriched.cost },
+        contextWindow: enriched.contextWindow ?? AXONHUB_DEFAULT_CONTEXT_WINDOW,
+        maxTokens: enriched.maxTokens ?? AXONHUB_DEFAULT_MAX_TOKENS,
+        ...(compat ? { compat } : {}),
+      };
+    }
+
+    /**
+     * Resolve a dynamic AxonHub model.
+     *
+     * Prefers a warm cache entry (populated by `prepareDynamicModel` or a prior
+     * catalog fetch) so the model carries its real protocol family, `api`, and
+     * `baseUrl`. When no cache entry exists, derives a conservative model by
+     * enriching a minimal `DiscoveredModel`; this still routes Gemini/Anthropic
+     * ids to the correct endpoint via the metadata resolver rather than
+     * hard-coding `openai-completions` for every family.
+     */
     function buildDynamicAxonhubModel(
       ctx: ProviderResolveDynamicModelContext,
     ): ProviderRuntimeModel {
-      const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
-      const baseUrl = ctx.providerConfig?.baseUrl
-        ?? (configuredBaseUrl ? configuredBaseUrl.replace(/\/+$/, "") : undefined)
-        ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
+      const instanceRoot = resolveAxonhubInstanceRoot(ctx.config);
+
+      // 1. Warm cache hit: use the fully-enriched record.
+      const cached = findCachedEnrichedModel(instanceRoot, ctx.modelId);
+      if (cached) {
+        return runtimeModelFromEnriched(cached);
+      }
+
+      // 2. Fallback: enrich a minimal discovered model so protocol routing is
+      //    still metadata-driven (id/owner-aware) instead of a hard-coded api.
       const family = resolveAxonhubFamily(ctx.modelId);
-      const dynamicCompat = family?.supportedEffortsForCompat?.length
-        ? { supportedReasoningEfforts: [...family.supportedEffortsForCompat] }
-        : undefined;
-      return {
+      const minimal: DiscoveredModel = {
         id: ctx.modelId,
         name: ctx.modelId,
-        api: "openai-completions",
-        provider: PROVIDER_ID,
-        baseUrl,
         reasoning: family !== null,
+        vision: false,
         input: ["text"],
         cost: { ...AXONHUB_DEFAULT_COST },
+      };
+      const enriched = enrichModel(minimal, instanceRoot);
+      return {
+        ...runtimeModelFromEnriched(enriched),
         contextWindow: AXONHUB_DEFAULT_CONTEXT_WINDOW,
         maxTokens: AXONHUB_DEFAULT_MAX_TOKENS,
-        ...(dynamicCompat ? { compat: dynamicCompat } : {}),
       };
+    }
+
+    /**
+     * Async warm-up for dynamic model resolution. Resolves provider auth via the
+     * public provider-auth runtime and forces a discovery refresh so the
+     * synchronous `resolveDynamicModel` retry can find the enriched record in the
+     * in-memory cache. Best-effort: any failure leaves the conservative fallback
+     * in place.
+     */
+    async function prepareDynamicAxonhubModel(
+      ctx: ProviderPrepareDynamicModelContext,
+    ): Promise<void> {
+      try {
+        const instanceRoot = resolveAxonhubInstanceRoot(ctx.config);
+        const auth = await resolveApiKeyForProvider({
+          provider: PROVIDER_ID,
+          cfg: ctx.config,
+          profileId: ctx.authProfileId,
+          agentDir: ctx.agentDir,
+          workspaceDir: ctx.workspaceDir,
+        });
+        const apiKey = auth.apiKey;
+        if (!apiKey) return;
+        await syncAxonhubModels({
+          instanceRoot,
+          apiKey,
+          profileId: auth.profileId ?? ctx.authProfileId,
+          agentDir: ctx.agentDir,
+        });
+      } catch {
+        // Best-effort warm-up; conservative fallback covers failures.
+      }
     }
 
     api.registerProvider({
@@ -407,9 +359,17 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
               throw new Error("Missing API key input for AxonHub.");
             }
 
-            // 3. Try to discover models from the AxonHub instance
-            const apiBaseUrl = `${baseUrl}${AXONHUB_API_PATH}`;
-            const discovered = await fetchAxonhubModels({ baseUrl: apiBaseUrl, apiKey: resolvedKey });
+            // 3. Try to discover models from the AxonHub instance through the
+            //    shared sync service (force-refreshes so onboarding always sees
+            //    the current instance-visible set). The enriched rows carry the
+            //    per-model protocol `api`/`baseUrl`.
+            const instanceRoot = normalizeAxonhubInstanceRoot(baseUrl);
+            const { models: discovered } = await syncAxonhubModels({
+              instanceRoot,
+              apiKey: resolvedKey,
+              agentDir: ctx.agentDir,
+              forceRefresh: true,
+            });
 
             // Pick a good default model: prefer known models, fallback to first discovered
             const PREFERRED_DEFAULTS = ["gpt-4o", "gpt-4", "claude-3-5-sonnet", "auto"];
@@ -473,14 +433,15 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
           if (!authKey) {
             return null;
           }
-          const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
-          const baseUrl = configuredBaseUrl
-            ? configuredBaseUrl.replace(/\/+$/, "")
-            : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-          const discovered = await fetchAxonhubModels({ baseUrl, apiKey: authKey });
+          const instanceRoot = resolveAxonhubInstanceRoot(ctx.config);
+          const { models: discovered } = await syncAxonhubModels({
+            instanceRoot,
+            apiKey: authKey,
+            agentDir: ctx.agentDir,
+          });
 
           const models = discovered.length > 0
-            ? discovered.map(buildAxonhubCatalogModelEntry)
+            ? buildAxonhubCatalogModels(discovered)
             : [
                 // Minimal fallback when AxonHub is unreachable
                 {
@@ -494,9 +455,13 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
                 },
               ];
 
+          // Provider-level `api`/`baseUrl` remain the OpenAI-compatible default
+          // so models without an explicit override (e.g. the "auto" fallback)
+          // still resolve. Per-model `api`/`baseUrl` on the enriched rows route
+          // Gemini/Anthropic/Responses/Chat to their own AxonHub endpoints.
           return {
             provider: {
-              baseUrl,
+              baseUrl: getAxonhubOpenAIEndpoint(instanceRoot),
               apiKey: authKey,
               api: "openai-completions",
               models,
@@ -504,28 +469,37 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
           };
         },
       },
-      augmentModelCatalog: async (ctx: ProviderAugmentModelCatalogContext) => {
-        const configuredBaseUrl = resolveAxonhubConfigBaseUrl(ctx.config);
-        const baseUrl = configuredBaseUrl
-          ? configuredBaseUrl.replace(/\/+$/, "")
-          : `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
-        const envAuthKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
-
-        if (envAuthKey) {
-          const discovered = await fetchAxonhubModels({ baseUrl, apiKey: envAuthKey });
-          if (discovered.length > 0) {
-            return discovered.map((m) => ({
-              provider: PROVIDER_ID,
-              ...buildAxonhubCatalogModelEntry(m),
-            }));
-          }
-        }
-
-        // No API key or unreachable: return empty so model picker doesn't
-        // show stale hardcoded entries. The user can always type manually.
-        return [];
-      },
       resolveDynamicModel: (ctx) => buildDynamicAxonhubModel(ctx),
+      prepareDynamicModel: async (ctx: ProviderPrepareDynamicModelContext) => {
+        // Async warm-up before the synchronous `resolveDynamicModel` retry:
+        // resolve provider auth through the public runtime and warm the shared
+        // discovery cache so `buildDynamicAxonhubModel` can read the enriched
+        // record (correct protocol `api`/`baseUrl`) instead of the conservative
+        // fallback.
+        try {
+          const instanceRoot = resolveAxonhubInstanceRoot(ctx.config);
+          const auth = await resolveApiKeyForProvider({
+            provider: PROVIDER_ID,
+            cfg: ctx.config,
+            agentDir: ctx.agentDir,
+            workspaceDir: ctx.workspaceDir,
+            profileId: ctx.authProfileId,
+          });
+          const apiKey = auth?.apiKey;
+          if (!apiKey) {
+            return;
+          }
+          await syncAxonhubModels({
+            instanceRoot,
+            apiKey,
+            profileId: ctx.authProfileId,
+            agentDir: ctx.agentDir,
+          });
+        } catch {
+          // Warm-up is best-effort. On failure the synchronous resolver falls
+          // back to a conservative metadata-derived model.
+        }
+      },
       resolveThinkingProfile: ({ modelId, reasoning }) =>
         buildAxonhubThinkingProfile(modelId, reasoning),
       supportsXHighThinking: ({ modelId }) => supportsAxonhubXHighThinking(modelId),
@@ -553,6 +527,70 @@ const axonhubPlugin: OpenClawPluginDefinition = definePluginEntry({
         },
       },
     });
+
+    // Register unified model catalog provider for live discovery (replaces
+    // deprecated `augmentModelCatalog`). Provides supplemental text-model rows
+    // when an API key is available.
+    api.registerModelCatalogProvider({
+      provider: PROVIDER_ID,
+      kinds: ["text"],
+      liveCatalog: async (ctx: UnifiedModelCatalogProviderContext) => {
+        const envAuthKey = ctx.env?.[AXONHUB_API_KEY_ENV_VAR]?.trim();
+        if (!envAuthKey) {
+          return [];
+        }
+        const instanceRoot = resolveAxonhubInstanceRoot(ctx.config);
+        const { models: discovered } = await syncAxonhubModels({
+          instanceRoot,
+          apiKey: envAuthKey,
+          agentDir: ctx.agentDir,
+          timeoutMs: ctx.timeoutMs,
+        });
+        if (discovered.length === 0) {
+          return [];
+        }
+        const now = Date.now();
+        return discovered.map((m): UnifiedModelCatalogEntry => ({
+          kind: "text",
+          provider: PROVIDER_ID,
+          model: m.id,
+          label: m.name,
+          source: "live",
+          fetchedAt: now,
+        }));
+      },
+    });
+
+    // Register the `openclaw axonhub models sync|status` CLI command group.
+    // Nested under a top-level `axonhub` command via the public registerCli API.
+    api.registerCli(
+      (cliCtx) => {
+        const axonhubCmd = cliCtx.program
+          .command("axonhub")
+          .description("AxonHub plugin commands");
+        registerAxonhubCliCommands({ ...cliCtx, program: axonhubCmd });
+      },
+      {
+        commands: ["axonhub"],
+        descriptors: [
+          {
+            name: "axonhub",
+            description: "AxonHub plugin commands",
+            hasSubcommands: true,
+          },
+        ],
+      },
+    );
+
+    // Register the plugin-only Codex runtime bridge. It only projects
+    // `axonhub/<model>` selections that explicitly target the `codex` runtime;
+    // ordinary AxonHub runs are untouched. The credential helper lives next to
+    // this compiled module in `dist/`.
+    const helperPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "codex-auth-helper.js",
+    );
+    registerCodexBridge(api, helperPath);
   },
 });
 
