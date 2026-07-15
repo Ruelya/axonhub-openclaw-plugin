@@ -91,6 +91,39 @@ and should not be confused:
    pinned upstream catalog and opens a reviewable pull request only when the
    generated artifact actually changes.
 
+## Releasing
+
+Publishing is tag-driven. Pushing a `v*` git tag triggers the `Publish Package`
+GitHub workflow, which typechecks, validates the manifest, runs tests, builds,
+then publishes to npm and ClawHub. The npm step is skipped automatically if the
+`package.json` version already exists on the registry.
+
+To cut a release:
+
+1. Bump the version in **all three** files so they stay in lockstep:
+   `package.json`, `openclaw.plugin.json`, and `package-lock.json`
+   (run `npm install` to update the lockfile after editing `package.json`).
+   Follow semver: new models / routing / features → minor; fixes → patch.
+2. Verify locally before tagging:
+
+   ```bash
+   npm run check:model-metadata   # generated artifact is up to date
+   npm run typecheck
+   npm test                       # full suite must pass
+   npm run build
+   ```
+
+3. Commit with a `chore: release vX.Y.Z` message, push `master`, then push a
+   matching tag:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+Never reuse or move an existing tag. If a release fails, bump to a new version
+rather than re-pushing the same tag.
+
 ## License
 
 MIT
