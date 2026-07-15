@@ -20,7 +20,7 @@
   },
   "records": [
     {
-      "id": "claude-mythos-preview",
+      "id": "claude-fable-5",
       "owners": ["anthropic"],
       "protocolFamily": "anthropic",
       "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
@@ -50,6 +50,12 @@
       "supportedReasoningEfforts": ["low", "medium", "high", "max"]
     },
     {
+      "id": "claude-sonnet-5",
+      "owners": ["anthropic"],
+      "protocolFamily": "anthropic",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
       "id": "deepseek-v4-flash",
       "owners": ["deepseek"],
       "protocolFamily": "openai-completions",
@@ -59,6 +65,30 @@
       "id": "deepseek-v4-pro",
       "owners": ["deepseek"],
       "protocolFamily": "openai-completions",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "gpt-5.6",
+      "owners": ["openai"],
+      "protocolFamily": "openai-responses",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "owners": ["openai"],
+      "protocolFamily": "openai-responses",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "owners": ["openai"],
+      "protocolFamily": "openai-responses",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "owners": ["openai"],
+      "protocolFamily": "openai-responses",
       "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
     }
   ]

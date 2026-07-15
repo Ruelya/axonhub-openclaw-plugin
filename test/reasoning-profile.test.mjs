@@ -62,7 +62,16 @@ function levels(modelId, reasoning = true) {
 assert.deepEqual(levels('deepseek-v4-flash'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 assert.deepEqual(levels('axonhub/deepseek-v4-pro'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
-// --- GPT family: xhigh only, no max (upstream OpenAI doesn't support max) ---
+// --- GPT-5.6 family: xhigh + max ---
+for (const gpt56ModelId of ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+  assert.deepEqual(
+    levels(gpt56ModelId),
+    ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    `${gpt56ModelId} should expose xhigh + max`,
+  );
+}
+
+// --- Earlier GPT family: xhigh only, no max ---
 assert.deepEqual(levels('gpt-5.5'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 assert.deepEqual(levels('gpt-5.4-mini'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 assert.deepEqual(levels('gpt-5.3-codex'), ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
@@ -76,7 +85,19 @@ assert.equal(provider.resolveThinkingProfile({ provider: 'axonhub', modelId: 'pl
 assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'deepseek-v4-flash' }), true);
 assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'plain-chat' }), false);
 
-// --- Anthropic Claude opus-4.7 / mythos — full xhigh+adaptive+max ---
+// --- Anthropic Claude 5 / opus-4.7 — full xhigh+adaptive+max ---
+for (const claude5ModelId of ['claude-fable-5', 'claude-sonnet-5']) {
+  assert.deepEqual(
+    levels(claude5ModelId),
+    ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
+    `${claude5ModelId} should expose xhigh+adaptive+max`,
+  );
+  assert.equal(
+    provider.supportsXHighThinking({ provider: 'axonhub', modelId: claude5ModelId }),
+    true,
+  );
+}
+
 assert.deepEqual(
   levels('claude-opus-4-7'),
   ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
@@ -87,13 +108,7 @@ assert.deepEqual(
   ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
   'dot-form claude-opus-4.7 should be recognized too',
 );
-assert.deepEqual(
-  levels('claude-mythos-preview'),
-  ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
-  'claude-mythos-preview should expose xhigh+adaptive+max',
-);
 assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'claude-opus-4-7' }), true);
-assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'claude-mythos-preview' }), true);
 
 // --- Anthropic Claude opus-4.6 / sonnet-4.6 — adaptive + max, no xhigh ---
 assert.deepEqual(
@@ -121,12 +136,15 @@ assert.deepEqual(
 );
 assert.equal(provider.supportsXHighThinking({ provider: 'axonhub', modelId: 'gemini-3-flash-preview' }), true);
 
-// --- max gating: only the 6 known max-capable models ---
+// --- max gating: only known max-capable families ---
 assert.equal(familyTable.supportsAxonhubMaxThinking('deepseek-v4-pro'), true, 'deepseek-v4-pro should support max wrapper');
 assert.equal(familyTable.supportsAxonhubMaxThinking('claude-opus-4-7'), true, 'claude-opus-4-7 should support max wrapper');
-assert.equal(familyTable.supportsAxonhubMaxThinking('claude-mythos-preview'), true, 'claude-mythos-preview should support max wrapper');
+assert.equal(familyTable.supportsAxonhubMaxThinking('claude-fable-5'), true, 'claude-fable-5 should support max wrapper');
+assert.equal(familyTable.supportsAxonhubMaxThinking('claude-sonnet-5'), true, 'claude-sonnet-5 should support max wrapper');
 assert.equal(familyTable.supportsAxonhubMaxThinking('claude-opus-4-6'), true, 'claude-opus-4-6 should activate max wrapper');
 assert.equal(familyTable.supportsAxonhubMaxThinking('claude-sonnet-4-6'), true, 'claude-sonnet-4-6 should activate max wrapper');
+assert.equal(familyTable.supportsAxonhubMaxThinking('gpt-5.6'), true, 'gpt-5.6 should activate max wrapper');
+assert.equal(familyTable.supportsAxonhubMaxThinking('gpt-5.6-luna'), true, 'gpt-5.6 variants should activate max wrapper');
 assert.equal(familyTable.supportsAxonhubMaxThinking('gpt-5.5'), false, 'gpt-5.5 should NOT activate max wrapper (no upstream max)');
 assert.equal(familyTable.supportsAxonhubMaxThinking('gemini-3-flash-preview'), false, 'gemini-3* should NOT activate max wrapper');
 assert.equal(familyTable.supportsAxonhubMaxThinking('ordinary-reasoning-model'), false, 'unknown reasoning model should NOT activate max wrapper');
@@ -141,7 +159,11 @@ assert.deepEqual(
   ['low', 'medium', 'high', 'xhigh', 'max'],
 );
 assert.deepEqual(
-  familyTable.resolveAxonhubFamily('claude-mythos-preview').supportedEffortsForCompat,
+  familyTable.resolveAxonhubFamily('claude-fable-5').supportedEffortsForCompat,
+  ['low', 'medium', 'high', 'xhigh', 'max'],
+);
+assert.deepEqual(
+  familyTable.resolveAxonhubFamily('claude-sonnet-5').supportedEffortsForCompat,
   ['low', 'medium', 'high', 'xhigh', 'max'],
 );
 assert.deepEqual(
@@ -156,7 +178,11 @@ assert.deepEqual(
   familyTable.resolveAxonhubFamily('gemini-3-flash-preview').supportedEffortsForCompat,
   ['low', 'medium', 'high', 'xhigh'],
 );
-// OpenAI gpt-5* / o3 / o4-mini — xhigh only, no max
+assert.deepEqual(
+  familyTable.resolveAxonhubFamily('gpt-5.6-sol').supportedEffortsForCompat,
+  ['low', 'medium', 'high', 'xhigh', 'max'],
+);
+// Earlier OpenAI gpt-5* / o3 / o4-mini — xhigh only, no max
 assert.deepEqual(
   familyTable.resolveAxonhubFamily('gpt-5.5').supportedEffortsForCompat,
   ['low', 'medium', 'high', 'xhigh'],

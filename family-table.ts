@@ -90,9 +90,9 @@ function resolveClaudeModelIdentity(ref: ClaudeModelRef): string {
     : normalized;
 }
 
-function resolveClaudeFable5ModelIdentity(ref: ClaudeModelRef): string | undefined {
+function resolveClaude5HighDefaultModelIdentity(ref: ClaudeModelRef): string | undefined {
   const normalized = resolveClaudeModelIdentity(ref);
-  const match = /(?:^|-)claude-fable-5(?=$|[^a-z0-9])/.exec(normalized);
+  const match = /(?:^|-)claude-(?:fable-5|sonnet-5)(?=$|[^a-z0-9])/.exec(normalized);
   if (!match) {
     return undefined;
   }
@@ -101,14 +101,14 @@ function resolveClaudeFable5ModelIdentity(ref: ClaudeModelRef): string | undefin
 
 function supportsClaudeAdaptiveThinking(ref: ClaudeModelRef): boolean {
   const modelId = resolveClaudeModelIdentity(ref);
-  return /(?:^|-)claude-(?:fable-5|mythos-preview|opus-4-(?:6|7|8)|sonnet-4-6)(?=$|[^a-z0-9])/.test(
+  return /(?:^|-)claude-(?:fable-5|opus-4-(?:6|7|8)|sonnet-(?:4-6|5))(?=$|[^a-z0-9])/.test(
     modelId,
   );
 }
 
 function supportsClaudeNativeXhighEffort(ref: ClaudeModelRef): boolean {
   const modelId = resolveClaudeModelIdentity(ref);
-  return /(?:^|-)claude-(?:fable-5|opus-4-(?:7|8))(?=$|[^a-z0-9])/.test(modelId);
+  return /(?:^|-)claude-(?:fable-5|opus-4-(?:7|8)|sonnet-5)(?=$|[^a-z0-9])/.test(modelId);
 }
 
 function isClaudeAdaptiveThinkingDefaultModelId(modelId: string): boolean {
@@ -124,7 +124,7 @@ function resolveAxonhubClaudeThinkingProfile(
 ): ProviderThinkingProfile {
   const ref = { id: modelId, params };
   const canonicalModelId = resolveClaudeModelIdentity(ref);
-  if (resolveClaudeFable5ModelIdentity(ref)) {
+  if (resolveClaude5HighDefaultModelIdentity(ref)) {
     return {
       levels: [
         ...BASE_CLAUDE_THINKING_LEVELS,
@@ -194,6 +194,10 @@ function isOpenAiGpt5OrOSeriesId(normalized: string): boolean {
   return /^(?:gpt-5|o3|o4-mini)/i.test(normalized);
 }
 
+function isOpenAiGpt56SeriesId(normalized: string): boolean {
+  return /^gpt-5\.6(?:$|-)/i.test(normalized);
+}
+
 function isGoogleGemini3Id(normalized: string): boolean {
   return /^gemini-3/i.test(normalized);
 }
@@ -216,24 +220,11 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
   const claudeSupportsMax = profileSupportsLevel(claudeProfile, "max");
   const claudeSupportsAdaptive = profileSupportsLevel(claudeProfile, "adaptive");
 
-  // Anthropic Claude opus-4.7 / mythos — xhigh + adaptive + max.
-  // `claude-mythos-preview` is handled via adaptive-thinking detection; keep
-  // the inline full profile when max is not inferred from the resolver.
-  if (claudeSupportsMax || normalized === "claude-mythos-preview") {
-    const profile: ProviderThinkingProfile = claudeSupportsMax
-      ? claudeProfile
-      : {
-          levels: [
-            ...BASE_LEVELS_OFF_TO_HIGH,
-            { id: "xhigh" as const, label: "xhigh", rank: 60 },
-            { id: "adaptive" as const, label: "adaptive", rank: 50 },
-            { id: "max" as const, label: "max", rank: 70 },
-          ],
-          defaultLevel: "off",
-        };
+  // Claude models with native xhigh, adaptive thinking, and max support.
+  if (claudeSupportsMax) {
     return {
-      family: "anthropic-claude-4.7",
-      profile,
+      family: "anthropic-claude-xhigh-max",
+      profile: claudeProfile,
       supportsXHigh: true,
       supportsMax: true,
       supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
@@ -260,10 +251,18 @@ export function resolveAxonhubFamily(modelId: string): AxonhubReasoningFamily | 
     };
   }
 
-  // OpenAI gpt-5.x / o3 / o4-mini — xhigh only.
-  // No upstream max support for any OpenAI-family model routed through
-  // AxonHub (as of 2026-05-05 the only models supporting max are Claude
-  // 4.6/4.7/mythos and DeepSeek V4).
+  // GPT-5.6 supports max across the base alias and Sol/Terra/Luna variants.
+  if (isOpenAiGpt56SeriesId(normalized)) {
+    return {
+      family: "openai-gpt-5.6",
+      profile: PROFILE_OFF_TO_MAX,
+      supportsXHigh: true,
+      supportsMax: true,
+      supportedEffortsForCompat: [...STANDARD_EFFORTS_WITH_MAX],
+    };
+  }
+
+  // Earlier OpenAI gpt-5.x / o3 / o4-mini models support xhigh, but not max.
   if (isOpenAiGpt5OrOSeriesId(normalized)) {
     return {
       family: "openai-gpt5-or-o-series",

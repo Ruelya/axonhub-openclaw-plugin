@@ -70,8 +70,8 @@ const AXONHUB_DEFAULT_COST = {
  *
  * Priority:
  * 1. If the family table matches the model id → use the family's profile
- *    (Claude 4.7 → xhigh+adaptive+max, gpt-5/o3/o4-mini → xhigh+max,
- *    Gemini 3 → xhigh, etc.).
+ *    (Claude 5 / supported Claude 4.x → adaptive+max, GPT-5.6 → xhigh+max,
+ *    earlier GPT-5.x / o3 / o4-mini and Gemini 3 → xhigh, etc.).
  * 2. Else if `reasoning` is true → return the standard 5-level base profile.
  * 3. Else → return null (no profile, OpenClaw falls back to default).
  *

@@ -6,14 +6,13 @@ AxonHub AI Gateway provider plugin for OpenClaw — Route requests to 100+ LLM p
 
 - Dynamic model discovery from your AxonHub instance
 - Custom base URL for self-hosted AxonHub deployments
-- OpenAI-compatible API transport (`openai-completions`)
+- Per-model protocol routing across OpenAI Responses / Chat Completions,
+  Anthropic Messages, and Gemini APIs
 - xhigh / max reasoning support for capable model families
-  (OpenAI gpt-5.x / o3 / o4-mini, Anthropic Claude opus-4.7 / sonnet-4.7,
-  DeepSeek V4, Google Gemini 3.x); other reasoning models fall back to OpenClaw's
-  built-in graceful effort downgrade so xhigh requests don't hit upstream 400s
-- Forward-compat: if AxonHub later exposes per-model reasoning effort lists in
-  `capabilities.reasoning_efforts` (or alias keys), the plugin reads them
-  preferentially over the built-in family table
+  (OpenAI GPT-5.6, Anthropic Claude Fable 5 / Sonnet 5 / supported Claude 4.x,
+  DeepSeek V4, and Google Gemini 3.x); earlier GPT-5.x / o3 / o4-mini models
+  expose xhigh without max. Other reasoning models fall back to OpenClaw's
+  built-in graceful effort downgrade so unsupported levels do not reach upstream
 - Automatic model metadata: context window, pricing, capabilities
 
 ## Installation

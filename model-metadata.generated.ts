@@ -67,7 +67,7 @@ export const OWNER_ALIASES: Readonly<Record<string, string>> = {
 // off < minimal < low < medium < high < adaptive < xhigh < max.
 export const MODEL_METADATA_RECORDS: readonly ModelMetadataRecord[] = [
   {
-    "id": "claude-mythos-preview",
+    "id": "claude-fable-5",
     "owners": [
       "anthropic"
     ],
@@ -135,6 +135,20 @@ export const MODEL_METADATA_RECORDS: readonly ModelMetadataRecord[] = [
     ]
   },
   {
+    "id": "claude-sonnet-5",
+    "owners": [
+      "anthropic"
+    ],
+    "protocolFamily": "anthropic",
+    "supportedReasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
     "id": "deepseek-v4-flash",
     "owners": [
       "deepseek"
@@ -154,6 +168,62 @@ export const MODEL_METADATA_RECORDS: readonly ModelMetadataRecord[] = [
       "deepseek"
     ],
     "protocolFamily": "openai-completions",
+    "supportedReasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "gpt-5.6",
+    "owners": [
+      "openai"
+    ],
+    "protocolFamily": "openai-responses",
+    "supportedReasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "gpt-5.6-luna",
+    "owners": [
+      "openai"
+    ],
+    "protocolFamily": "openai-responses",
+    "supportedReasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "gpt-5.6-sol",
+    "owners": [
+      "openai"
+    ],
+    "protocolFamily": "openai-responses",
+    "supportedReasoningEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "gpt-5.6-terra",
+    "owners": [
+      "openai"
+    ],
+    "protocolFamily": "openai-responses",
     "supportedReasoningEfforts": [
       "low",
       "medium",

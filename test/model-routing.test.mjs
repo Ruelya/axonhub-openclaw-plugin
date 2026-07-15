@@ -92,10 +92,15 @@ assert.equal(claude46.protocolFamily, 'anthropic');
 assert.equal(claude46.api, 'anthropic-messages');
 assert.deepEqual(claude46.supportedReasoningEfforts, ['low', 'medium', 'high', 'max']);
 
-const claudeMythos = enrichTestModel('claude-mythos-preview', 'anthropic');
-assert.equal(claudeMythos.protocolFamily, 'anthropic');
-assert.equal(claudeMythos.api, 'anthropic-messages');
-assert.deepEqual(claudeMythos.supportedReasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+for (const claude5ModelId of ['claude-fable-5', 'claude-sonnet-5']) {
+  const claude5Model = enrichTestModel(claude5ModelId, 'anthropic');
+  assert.equal(claude5Model.protocolFamily, 'anthropic');
+  assert.equal(claude5Model.api, 'anthropic-messages');
+  assert.deepEqual(
+    claude5Model.supportedReasoningEfforts,
+    ['low', 'medium', 'high', 'xhigh', 'max'],
+  );
+}
 
 // DeepSeek models → openai-completions + /v1
 const deepseekPro = enrichTestModel('deepseek-v4-pro', 'deepseek');
@@ -136,6 +141,17 @@ assert.deepEqual(
   ['low', 'medium', 'high', 'xhigh'],
   'gpt-5.5 efforts come from family-table fallback',
 );
+
+for (const gpt56ModelId of ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+  const gpt56Model = enrichTestModel(gpt56ModelId, 'openai');
+  assert.equal(gpt56Model.protocolFamily, 'openai-responses');
+  assert.equal(gpt56Model.api, 'openai-responses');
+  assert.equal(gpt56Model.baseUrl, 'http://localhost:8090/v1');
+  assert.deepEqual(
+    gpt56Model.supportedReasoningEfforts,
+    ['low', 'medium', 'high', 'xhigh', 'max'],
+  );
+}
 
 const o3 = enrichTestModel('o3', 'openai');
 assert.equal(o3.protocolFamily, 'openai-completions');
