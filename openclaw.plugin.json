@@ -2,25 +2,32 @@
   "id": "axonhub",
   "activation": {
     "onStartup": true,
-    "onProviders": ["axonhub"]
+    "onProviders": [
+      "axonhub"
+    ]
   },
   "enabledByDefault": false,
   "name": "AxonHub",
   "description": "AxonHub AI Gateway - Route requests to 100+ LLM providers",
-  "version": "1.2.0",
-  "providers": ["axonhub"],
-  "providerAuthEnvVars": {
-    "axonhub": ["AXONHUB_API_KEY"]
-  },
+  "version": "1.2.1",
+  "providers": [
+    "axonhub"
+  ],
   "modelSupport": {
-    "modelPrefixes": ["axonhub/"]
+    "modelPrefixes": [
+      "axonhub/"
+    ]
   },
   "setup": {
     "providers": [
       {
         "id": "axonhub",
-        "authMethods": ["api-key"],
-        "envVars": ["AXONHUB_API_KEY"]
+        "authMethods": [
+          "api-key"
+        ],
+        "envVars": [
+          "AXONHUB_API_KEY"
+        ]
       }
     ]
   },
