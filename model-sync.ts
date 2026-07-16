@@ -19,7 +19,10 @@ import type {
   DiscoveredModel,
   EnrichedModel,
 } from "./model-types.js";
-import { normalizeAxonhubInstanceRoot } from "./url-helpers.js";
+import {
+  getAxonhubOpenAIEndpoint,
+  normalizeAxonhubInstanceRoot,
+} from "./url-helpers.js";
 
 /** Default TTL: 1 hour, aligns with AxonHub's hourly channel model sync. */
 const DEFAULT_TTL_MS = 60 * 60 * 1000;
@@ -148,17 +151,56 @@ export type ModelSyncParams = {
 };
 
 /**
+ * Parse an AxonHub models HTTP response into a `data` array.
+ *
+ * AxonHub's instance root often serves a SPA for unknown paths (HTTP 200 +
+ * HTML). Only accept JSON bodies with a `data` array so HTML never counts as a
+ * successful models payload.
+ */
+async function parseModelsResponse(
+  res: Response,
+): Promise<AxonhubRawModelEntry[] | null> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html")) {
+    return null;
+  }
+
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    return null;
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.startsWith("<")) {
+    return null;
+  }
+
+  try {
+    const json = JSON.parse(trimmed) as AxonhubModelsResponse;
+    return Array.isArray(json.data) ? json.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetch and merge `/v1/models` and `/v1/models?include=all`. Accept either on
  * partial success and merge fields by model id.
+ *
+ * `params.baseUrl` is the AxonHub **instance root** (no `/v1` suffix). The OpenAI
+ * models API lives under `/v1`; requesting `/models` on the root returns SPA HTML
+ * on many deployments.
  */
 async function fetchAxonhubModels(params: {
   baseUrl: string;
   apiKey: string;
   timeoutMs: number;
 }): Promise<AxonhubRawModelEntry[]> {
-  const baseUrl = params.baseUrl.replace(/\/+$/, "");
-  const basicUrl = `${baseUrl}/models`;
-  const extendedUrl = `${baseUrl}/models?include=all`;
+  const apiBase = getAxonhubOpenAIEndpoint(params.baseUrl);
+  const basicUrl = `${apiBase}/models`;
+  const extendedUrl = `${apiBase}/models?include=all`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), params.timeoutMs);
@@ -182,27 +224,29 @@ async function fetchAxonhubModels(params: {
     let anyOk = false;
 
     if (basicRes.status === "fulfilled" && basicRes.value.ok) {
-      anyOk = true;
-      const json = (await basicRes.value.json()) as AxonhubModelsResponse;
-      if (Array.isArray(json.data)) {
-        basicData = json.data;
+      const data = await parseModelsResponse(basicRes.value);
+      if (data) {
+        anyOk = true;
+        basicData = data;
       }
     }
 
     if (extendedRes.status === "fulfilled" && extendedRes.value.ok) {
-      anyOk = true;
-      const json = (await extendedRes.value.json()) as AxonhubModelsResponse;
-      if (Array.isArray(json.data)) {
-        extendedData = json.data;
+      const data = await parseModelsResponse(extendedRes.value);
+      if (data) {
+        anyOk = true;
+        extendedData = data;
       }
     }
 
-    // Neither endpoint returned a usable response. Treat this as a transient
-    // fetch failure so the caller can fall back to a stale cache rather than
-    // caching an empty result. A successful 200 with an empty `data` array is
-    // legitimately empty and does NOT reach this branch.
+    // Neither endpoint returned a usable JSON models payload. Treat this as a
+    // transient fetch failure so the caller can fall back to a stale cache rather
+    // than caching an empty result. A successful 200 with an empty `data` array
+    // is legitimately empty and does NOT reach this branch.
     if (!anyOk) {
-      throw new Error("AxonHub /v1/models returned no successful response");
+      throw new Error(
+        `AxonHub models API returned no usable JSON (tried ${basicUrl} and ${extendedUrl})`,
+      );
     }
 
     // Merge: extended fields take precedence over basic.

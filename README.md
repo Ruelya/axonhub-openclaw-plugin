@@ -42,7 +42,33 @@ openclaw onboard --axonhub-api-key <your-api-key>
 | Setting | Description |
 |---------|-------------|
 | API Key | Your AxonHub API key |
-| Base URL | AxonHub instance URL (default: `http://localhost:8090`) |
+| Base URL | AxonHub instance URL (default: `http://localhost:8090`) — instance **root**, not `/v1` |
+
+Onboarding also writes:
+
+```json5
+{
+  "plugins": {
+    "entries": {
+      "axonhub": {
+        "enabled": true,
+        "hooks": {
+          // Required for the Codex bridge (`before_model_resolve`) on non-bundled plugins
+          "allowConversationAccess": true
+        },
+        "config": {
+          "baseUrl": "http://localhost:8090"
+        }
+      }
+    }
+  }
+}
+```
+
+If you installed the plugin before this was set automatically, add
+`plugins.entries.axonhub.hooks.allowConversationAccess=true` (or re-run
+onboarding / auth setup). Without it OpenClaw blocks the Codex model-projection
+hook with: `before_model_resolve blocked because non-bundled plugins must set ...`.
 
 ## Model synchronization
 
@@ -55,9 +81,11 @@ and should not be confused:
    inside your AxonHub instance; the plugin neither controls nor replaces it.
 
 2. **Plugin instance-cache refresh (client-side).** The plugin caches the set of
-   models your API key can currently see (`/v1/models`) with a bounded TTL
-   (default one hour) and a credential-scoped cache. The cache is refreshed
-   automatically on catalog access and is used by onboarding, catalog
+   models your API key can currently see (`/v1/models` on the instance root —
+   never the SPA path `/models`) with a bounded TTL (default one hour) and a
+   credential-scoped cache. Responses that look like HTML (common SPA fallbacks)
+   are treated as fetch failures so a stale cache can be retained. The cache is
+   refreshed automatically on catalog access and is used by onboarding, catalog
    discovery, and dynamic model resolution. You can force a refresh and inspect
    the cache explicitly:
 
@@ -73,6 +101,11 @@ and should not be confused:
    ```
 
    Output is deterministic and never prints your API key.
+
+   After a successful onboarding/auth setup, stored
+   `models.providers.axonhub.models` entries include per-model `api` and
+   `baseUrl` for protocol routing (OpenAI / Anthropic / Gemini). Re-run auth
+   setup if an older install still has a flat `openai-completions`-only catalog.
 
 3. **Generated enrichment-metadata sync (release-time).** The plugin ships a
    small, deterministic metadata artifact (`model-metadata.generated.ts`) that

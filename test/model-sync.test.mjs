@@ -57,8 +57,21 @@ const { syncAxonhubModels, findCachedEnrichedModel } = await import(
 let basicHandler = () => ({ data: [] });
 let extendedHandler = () => ({ data: [] });
 
+/** When true, serve SPA HTML at `/v1/models` to simulate a broken deploy. */
+let serveHtmlAtV1 = false;
+let rootModelsHits = 0;
+
 const server = createServer((req, res) => {
   try {
+    // SPA-style root: many AxonHub deploys return HTML 200 for `/models`.
+    // Hitting this path is a regression — the client must use `/v1/models`.
+    if (req.url === '/models' || req.url?.startsWith('/models?')) {
+      rootModelsHits += 1;
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><html><body>SPA</body></html>');
+      return;
+    }
+
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -68,11 +81,17 @@ const server = createServer((req, res) => {
 
     const token = authHeader.slice(7);
 
-    if (req.url === '/models') {
+    if (serveHtmlAtV1 && (req.url === '/v1/models' || req.url === '/v1/models?include=all')) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><html><body>not json</body></html>');
+      return;
+    }
+
+    if (req.url === '/v1/models') {
       const response = basicHandler(token);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(response));
-    } else if (req.url === '/models?include=all') {
+    } else if (req.url === '/v1/models?include=all') {
       const response = extendedHandler(token);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(response));
@@ -287,6 +306,39 @@ const result9 = await syncAxonhubModels({
 assert.equal(result9.status.fresh, true, 'corrupt cache should be ignored, fresh fetch');
 assert.equal(result9.models.length, 1, 'should fetch from server');
 assert.equal(result9.models[0].id, 'fresh-model', 'should have fresh model');
+
+// Test 10: must hit `/v1/models`, never SPA `/models` on the instance root
+rootModelsHits = 0;
+basicHandler = () => ({
+  data: [{ id: 'v1-only', owned_by: 'openai', name: 'V1 Only', type: 'chat' }],
+});
+extendedHandler = () => ({ data: [] });
+
+const result10 = await syncAxonhubModels({
+  instanceRoot,
+  apiKey: 'key-v1-path',
+  agentDir,
+  forceRefresh: true,
+});
+
+assert.equal(result10.status.fresh, true, 'v1 path should succeed');
+assert.equal(result10.models[0]?.id, 'v1-only', 'should load model from /v1/models');
+assert.equal(rootModelsHits, 0, 'must not request SPA /models on instance root');
+
+// Test 11: HTML 200 on /v1/models is not a successful models payload (stale-on-error)
+serveHtmlAtV1 = true;
+const result11 = await syncAxonhubModels({
+  instanceRoot,
+  apiKey: 'key-v1-path',
+  agentDir,
+  forceRefresh: true,
+});
+serveHtmlAtV1 = false;
+
+assert.equal(result11.status.fresh, false, 'HTML body should not count as fresh');
+assert.equal(result11.status.stale, true, 'should return stale cache when HTML is served');
+assert.equal(result11.models[0]?.id, 'v1-only', 'stale cache should keep previous model');
+assert(result11.status.error, 'error should describe the failed models API');
 
 server.close();
 

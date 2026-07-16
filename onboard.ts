@@ -7,6 +7,14 @@ const AXONHUB_API_PATH = "/v1";
 const AXONHUB_PROVIDER_API_KIND = "openai-completions";
 
 /**
+ * Strip a trailing `/v1` so plugin config stores the instance root (matches
+ * `plugins.entries.axonhub.config.baseUrl` schema default).
+ */
+function toInstanceRoot(url: string): string {
+  return url.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+}
+
+/**
  * Apply AxonHub config patch.
  *
  * When `models` is provided, the stored `models.providers.axonhub.models` array
@@ -18,6 +26,10 @@ const AXONHUB_PROVIDER_API_KIND = "openai-completions";
  * write, the static cfg pre-dates the family-table compat work and only the
  * base profile (off..high) is offered at the `/think` command site, even
  * though the runtime hook returns the right profile.
+ *
+ * Also enables `plugins.entries.axonhub.hooks.allowConversationAccess` so the
+ * non-bundled Codex bridge (`before_model_resolve`) is allowed by OpenClaw's
+ * conversation-hook policy for third-party plugins.
  *
  * `models` is typed loosely (`unknown[]`) because callers in index.ts produce
  * the catalog-entry shape from `buildAxonhubCatalogModelEntry`, which already
@@ -35,7 +47,7 @@ export function applyAxonhubConfig(
   let axonhubProvider = { ...providers[AXONHUB_PROVIDER_ID] };
 
   const resolvedBaseUrl = baseUrl
-    ? `${baseUrl.replace(/\/+$/, "")}${AXONHUB_API_PATH}`
+    ? `${toInstanceRoot(baseUrl)}${AXONHUB_API_PATH}`
     : axonhubProvider.baseUrl ?? `${AXONHUB_DEFAULT_BASE_URL}${AXONHUB_API_PATH}`;
   axonhubProvider.baseUrl = resolvedBaseUrl;
 
@@ -52,7 +64,62 @@ export function applyAxonhubConfig(
   providers = { ...providers, [AXONHUB_PROVIDER_ID]: axonhubProvider };
   modelsRoot = { ...modelsRoot, providers };
 
-  return { ...config, models: modelsRoot };
+  // Plugin entry: enable + allow conversation hooks + store instance root.
+  // OpenClaw blocks non-bundled `before_model_resolve` (Codex bridge) unless
+  // `hooks.allowConversationAccess` is true.
+  const instanceRoot = toInstanceRoot(
+    typeof baseUrl === "string" && baseUrl.trim()
+      ? baseUrl
+      : typeof axonhubProvider.baseUrl === "string"
+        ? axonhubProvider.baseUrl
+        : AXONHUB_DEFAULT_BASE_URL,
+  );
+  const pluginsRoot = { ...(config.plugins ?? {}) } as Record<string, unknown>;
+  const entries = {
+    ...((pluginsRoot.entries as Record<string, unknown> | undefined) ?? {}),
+  };
+  const existingEntry =
+    entries[AXONHUB_PROVIDER_ID] &&
+    typeof entries[AXONHUB_PROVIDER_ID] === "object"
+      ? (entries[AXONHUB_PROVIDER_ID] as Record<string, unknown>)
+      : {};
+  const existingHooks =
+    existingEntry.hooks && typeof existingEntry.hooks === "object"
+      ? (existingEntry.hooks as Record<string, unknown>)
+      : {};
+  const existingPluginConfig =
+    existingEntry.config && typeof existingEntry.config === "object"
+      ? (existingEntry.config as Record<string, unknown>)
+      : {};
+
+  entries[AXONHUB_PROVIDER_ID] = {
+    ...existingEntry,
+    enabled: true,
+    hooks: {
+      ...existingHooks,
+      allowConversationAccess: true,
+    },
+    config: {
+      ...existingPluginConfig,
+      baseUrl: instanceRoot,
+    },
+  };
+  pluginsRoot.entries = entries;
+
+  // Keep axonhub on the allowlist when the host uses an explicit allow list.
+  const allow = pluginsRoot.allow;
+  if (Array.isArray(allow)) {
+    const nextAllow = allow.filter((id): id is string => typeof id === "string");
+    if (!nextAllow.includes(AXONHUB_PROVIDER_ID)) {
+      pluginsRoot.allow = [...nextAllow, AXONHUB_PROVIDER_ID];
+    }
+  }
+
+  return {
+    ...config,
+    models: modelsRoot,
+    plugins: pluginsRoot as OpenClawConfig["plugins"],
+  };
 }
 
 export function resolveAxonhubConfigBaseUrl(config: OpenClawConfig | undefined): string | undefined {
