@@ -21,75 +21,169 @@
   "records": [
     {
       "id": "claude-fable-5",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "claude-opus-4-6",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ]
     },
     {
       "id": "claude-opus-4-7",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "claude-opus-4-8",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "claude-sonnet-4-6",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ]
     },
     {
       "id": "claude-sonnet-5",
-      "owners": ["anthropic"],
+      "owners": [
+        "anthropic"
+      ],
       "protocolFamily": "anthropic",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "deepseek-v4-flash",
-      "owners": ["deepseek"],
+      "owners": [
+        "deepseek"
+      ],
       "protocolFamily": "openai-completions",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "deepseek-v4-pro",
-      "owners": ["deepseek"],
+      "owners": [
+        "deepseek"
+      ],
       "protocolFamily": "openai-completions",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "gpt-5.6",
-      "owners": ["openai"],
+      "owners": [
+        "openai"
+      ],
       "protocolFamily": "openai-responses",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "gpt-5.6-luna",
-      "owners": ["openai"],
+      "owners": [
+        "openai"
+      ],
       "protocolFamily": "openai-responses",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "gpt-5.6-sol",
-      "owners": ["openai"],
+      "owners": [
+        "openai"
+      ],
       "protocolFamily": "openai-responses",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "gpt-5.6-terra",
-      "owners": ["openai"],
+      "owners": [
+        "openai"
+      ],
       "protocolFamily": "openai-responses",
-      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     }
   ]
 }
